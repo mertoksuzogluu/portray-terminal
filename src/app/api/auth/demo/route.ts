@@ -7,6 +7,10 @@ const DEMO_EMAIL = "demo@yatirim.local";
 
 export async function POST() {
   try {
+    if (process.env.NEXT_PUBLIC_ENABLE_DEMO !== "true") {
+      return jsonError(new Error("Demo girişi kapalı."), 403);
+    }
+
     let user = await prisma.user.findUnique({ where: { email: DEMO_EMAIL } });
 
     if (!user) {
