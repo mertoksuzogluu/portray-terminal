@@ -1,0 +1,1 @@
+INSERT INTO users (id,email,name,"passwordHash","baseCurrency",timezone,"riskFreeRateAnnual","isDemo","createdAt","updatedAt") VALUES ('c449243a2e39747c53fbb0476','TR','TUFE','2026-07',3049.88,0.0241,NULL,'demo-seed','2026-07-16T12:46:40.248Z');

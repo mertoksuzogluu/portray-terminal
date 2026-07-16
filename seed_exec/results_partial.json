@@ -1,0 +1,27 @@
+{
+  "project_id": "otgvziyacokdmiwxmnxl",
+  "note": "Seed application in progress via MCP execute_sql. Direct DB/psql blocked (DNS).",
+  "chunks": {
+    "00": {"status": "FAIL", "error": "23505: duplicate key value violates unique constraint users_pkey — Key (id)=(c0a054179e303a9dcb889ba93) already exists (expected)"},
+    "01": {"status": "PARTIAL", "error": "2/5 batches applied (01_000, 01_001). Remainder: 01_002-01_004"},
+    "02": {"status": "PENDING", "error": null},
+    "03": {"status": "PENDING", "error": null},
+    "04": {"status": "PENDING", "error": null},
+    "05": {"status": "PENDING", "error": null},
+    "06": {"status": "PENDING", "error": null},
+    "07": {"status": "PENDING", "error": null},
+    "08": {"status": "PENDING", "error": null},
+    "09": {"status": "PENDING", "error": null},
+    "10": {"status": "PENDING", "error": null},
+    "11": {"status": "PENDING", "error": null},
+    "12": {"status": "PENDING", "error": null},
+    "13": {"status": "PENDING", "error": null},
+    "14": {"status": "PENDING", "error": null},
+    "15": {"status": "PENDING", "error": null},
+    "16": {"status": "PENDING", "error": null},
+    "17": {"status": "PENDING", "error": null}
+  },
+  "fk_typo_check": "Scanned all seed files: TUPRS assetId cbf46f05e033147e86a1ccb18 is consistent (25 chars). 2026-01-11 row uses correct ID. No FK typo found in current files.",
+  "batches_done": ["01_000", "01_001"],
+  "batches_remaining": 72
+}

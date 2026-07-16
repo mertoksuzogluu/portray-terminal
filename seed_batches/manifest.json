@@ -1,0 +1,92 @@
+[
+  {
+    "chunk": "00",
+    "batches": 2,
+    "tuples": 41
+  },
+  {
+    "chunk": "01",
+    "batches": 5,
+    "tuples": 200
+  },
+  {
+    "chunk": "02",
+    "batches": 5,
+    "tuples": 200
+  },
+  {
+    "chunk": "03",
+    "batches": 5,
+    "tuples": 200
+  },
+  {
+    "chunk": "04",
+    "batches": 5,
+    "tuples": 200
+  },
+  {
+    "chunk": "05",
+    "batches": 5,
+    "tuples": 200
+  },
+  {
+    "chunk": "06",
+    "batches": 7,
+    "tuples": 266
+  },
+  {
+    "chunk": "07",
+    "batches": 5,
+    "tuples": 200
+  },
+  {
+    "chunk": "08",
+    "batches": 5,
+    "tuples": 200
+  },
+  {
+    "chunk": "09",
+    "batches": 7,
+    "tuples": 273
+  },
+  {
+    "chunk": "10",
+    "batches": 3,
+    "tuples": 100
+  },
+  {
+    "chunk": "11",
+    "batches": 3,
+    "tuples": 114
+  },
+  {
+    "chunk": "12",
+    "batches": 3,
+    "tuples": 100
+  },
+  {
+    "chunk": "13",
+    "batches": 3,
+    "tuples": 100
+  },
+  {
+    "chunk": "14",
+    "batches": 3,
+    "tuples": 100
+  },
+  {
+    "chunk": "15",
+    "batches": 3,
+    "tuples": 100
+  },
+  {
+    "chunk": "16",
+    "batches": 3,
+    "tuples": 100
+  },
+  {
+    "chunk": "17",
+    "batches": 4,
+    "tuples": 156
+  }
+]

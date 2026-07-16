@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: yatirim-portfoyu-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: portfolio
+      POSTGRES_PASSWORD: portfolio
+      POSTGRES_DB: yatirim_portfoyu
+    ports:
+      - "5433:5432"
+    volumes:
+      - portfolio_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portfolio -d yatirim_portfoyu"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  portfolio_pg_data:

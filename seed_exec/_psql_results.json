@@ -1,0 +1,82 @@
+[
+  {
+    "part": "_group_00_part0.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_00_part1.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_01_part0.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_01_part1.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_02_part0.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_02_part1.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_03_part0.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_03_part1.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_04_part0.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_04_part1.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_05_part0.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_05_part1.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_06_part0.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_06_part1.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_07_part0.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  },
+  {
+    "part": "_group_07_part1.json",
+    "status": "FAIL",
+    "error": "[Errno 2] No such file or directory: 'psql'"
+  }
+]

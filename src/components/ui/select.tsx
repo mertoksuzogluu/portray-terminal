@@ -1,0 +1,43 @@
+"use client";
+
+import { ChevronDown } from "lucide-react";
+import { forwardRef, type SelectHTMLAttributes } from "react";
+import { cn } from "@/lib/utils/cn";
+
+export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+  placeholder?: string;
+}
+
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(
+  ({ className, children, placeholder, ...props }, ref) => (
+    <div className="relative">
+      <select
+        ref={ref}
+        className={cn(
+          "flex h-9 w-full appearance-none rounded-md border border-border bg-input px-3 py-1 pr-8 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+          className
+        )}
+        {...props}
+      >
+        {placeholder && (
+          <option value="" disabled>
+            {placeholder}
+          </option>
+        )}
+        {children}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+    </div>
+  )
+);
+Select.displayName = "Select";
+
+export function SelectItem({
+  value,
+  children,
+}: {
+  value: string;
+  children: React.ReactNode;
+}) {
+  return <option value={value}>{children}</option>;
+}

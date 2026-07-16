@@ -1,0 +1,3 @@
+-- CreateEnum
+CREATE TYPE "SyncStatus" AS ENUM ('RUNNING', 'SUCCESS', 'PARTIAL', 'FAILED');
+

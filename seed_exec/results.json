@@ -1,0 +1,38 @@
+{
+  "project_id": "otgvziyacokdmiwxmnxl",
+  "completed_at": "2026-07-16T16:00:00Z",
+  "status": "partial",
+  "chunks": {
+    "00": {"status": "FAIL", "error": "23505: duplicate key value violates unique constraint users_pkey — Key (id)=(c0a054179e303a9dcb889ba93) already exists (expected; base schema present)"},
+    "01": {"status": "OK", "error": null, "note": "All 5 batches (01_000–01_004) applied; 2026-01-11 TUPRS FK correct, no FK error"},
+    "02": {"status": "PENDING", "error": null},
+    "03": {"status": "PENDING", "error": null},
+    "04": {"status": "PENDING", "error": null},
+    "05": {"status": "PENDING", "error": null},
+    "06": {"status": "PENDING", "error": null},
+    "07": {"status": "PENDING", "error": null},
+    "08": {"status": "PENDING", "error": null},
+    "09": {"status": "PENDING", "error": null},
+    "10": {"status": "PENDING", "error": null},
+    "11": {"status": "PENDING", "error": null},
+    "12": {"status": "PENDING", "error": null},
+    "13": {"status": "PENDING", "error": null},
+    "14": {"status": "PENDING", "error": null},
+    "15": {"status": "PENDING", "error": null},
+    "16": {"status": "PENDING", "error": null},
+    "17": {"status": "PENDING", "error": null}
+  },
+  "batches_done": ["01_000", "01_001", "01_002", "01_003", "01_004"],
+  "batches_remaining": 69,
+  "fk_typo_check": {
+    "chunk_01_2026-01-11": "cbf46f05e033147e86a1ccb18 — correct (25 chars), batch 01_003 applied OK",
+    "chunk_02_2026-02-20": "cbf46f05e033147e86a1ccb18 — correct in source files (visual rendering can look like typo)"
+  },
+  "final_counts": {
+    "users": 1,
+    "assets": 5,
+    "prices": 160,
+    "snaps": 0,
+    "insights": 0
+  }
+}
