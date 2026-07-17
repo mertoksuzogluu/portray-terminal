@@ -297,11 +297,41 @@ async function syncBenchmarks(force: boolean): Promise<number> {
   return count;
 }
 
-export async function syncInflationData(): Promise<number> {
+export async function syncInflationData(): Promise<{
+  count: number;
+  source: string;
+}> {
   const provider = getInflationProvider();
-  if (!provider.isConfigured()) return 0;
+  const { Prisma } = await import("@prisma/client");
+  const { OFFICIAL_TUFE_SERIES } = await import("@/lib/data/tufe-official");
 
-  const rows = await provider.fetchLatest();
+  let rows: Array<{
+    period: string;
+    indexValue: string;
+    monthlyRate: string | null;
+    annualRate: string | null;
+  }> = [];
+  let source = provider.name;
+
+  if (provider.isConfigured()) {
+    try {
+      rows = await provider.fetchLatest();
+    } catch {
+      // EVDS başarısızsa resmi fallback
+      rows = [];
+    }
+  }
+
+  if (rows.length === 0) {
+    source = "tufe_official";
+    rows = OFFICIAL_TUFE_SERIES.map((r) => ({
+      period: r.period,
+      indexValue: String(r.indexValue),
+      monthlyRate: String(r.monthlyRate),
+      annualRate: String(r.annualRate),
+    }));
+  }
+
   let count = 0;
   for (const row of rows) {
     await prisma.inflationIndex.upsert({
@@ -323,7 +353,7 @@ export async function syncInflationData(): Promise<number> {
         annualRate: row.annualRate
           ? new Prisma.Decimal(row.annualRate)
           : null,
-        source: provider.name,
+        source,
       },
       update: {
         indexValue: new Prisma.Decimal(row.indexValue),
@@ -333,10 +363,11 @@ export async function syncInflationData(): Promise<number> {
         annualRate: row.annualRate
           ? new Prisma.Decimal(row.annualRate)
           : null,
+        source,
         fetchedAt: new Date(),
       },
     });
     count += 1;
   }
-  return count;
+  return { count, source };
 }

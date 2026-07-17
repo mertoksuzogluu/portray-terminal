@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
     return jsonOk({
       ok: true,
       market,
-      inflationRecords: inflation,
+      inflationRecords: inflation.count,
+      inflationSource: inflation.source,
     });
   } catch (error) {
     return jsonError(error);

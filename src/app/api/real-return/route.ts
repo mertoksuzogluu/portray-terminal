@@ -58,6 +58,7 @@ export async function GET() {
       };
     }
 
+    const latestInf = inflation.at(-1);
     const monthlyReal = series.filter((_, i) => i % 22 === 0);
 
     return jsonOk({
@@ -72,12 +73,26 @@ export async function GET() {
           latest?.inflationAdjustedCapital
             ? Number(latest.inflationAdjustedCapital.toString())
             : computedReal.inflationAdjustedCapital,
-        latestInflationRate: inflation.at(-1)?.annualRate
-          ? Number(inflation.at(-1)!.annualRate!.toString())
+        latestInflationRate: latestInf?.annualRate
+          ? Number(latestInf.annualRate.toString())
           : null,
+        latestMonthlyInflation: latestInf?.monthlyRate
+          ? Number(latestInf.monthlyRate.toString())
+          : null,
+        latestPeriod: latestInf?.period ?? null,
       },
       series,
       monthlyReal,
+      inflation: inflation
+        .slice(-18)
+        .reverse()
+        .map((i) => ({
+          period: i.period,
+          indexValue: Number(i.indexValue.toString()),
+          monthlyRate: i.monthlyRate ? Number(i.monthlyRate.toString()) : null,
+          annualRate: i.annualRate ? Number(i.annualRate.toString()) : null,
+          source: i.source,
+        })),
       inflationAvailable: inflation.length > 0,
     });
   } catch (error) {

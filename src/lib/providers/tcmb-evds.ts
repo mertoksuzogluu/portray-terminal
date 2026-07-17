@@ -101,7 +101,7 @@ export class TcmbEvdsInflationProvider implements InflationDataProvider {
 
     const end = new Date();
     const start = new Date();
-    start.setFullYear(end.getFullYear() - 2);
+    start.setFullYear(end.getFullYear() - 3);
 
     const url = new URL(`${EVDS_BASE}/series=${SERIES.TUFE}`);
     url.searchParams.set("startDate", formatTr(start));
@@ -123,30 +123,51 @@ export class TcmbEvdsInflationProvider implements InflationDataProvider {
       annualRate: string | null;
     }> = [];
 
-    let prev: number | null = null;
+    const byPeriod = new Map<string, number>();
     for (const item of data.items ?? []) {
       const valueKey = Object.keys(item).find((k) => k.startsWith("TP_"));
       const raw = valueKey ? item[valueKey] : null;
       if (!raw || !item.Tarih) continue;
       const indexValue = Number(String(raw).replace(",", "."));
       if (!Number.isFinite(indexValue)) continue;
+      byPeriod.set(toPeriod(item.Tarih), indexValue);
+    }
 
-      const period = toPeriod(item.Tarih);
+    const periods = [...byPeriod.keys()].sort();
+    for (let i = 0; i < periods.length; i++) {
+      const period = periods[i];
+      const indexValue = byPeriod.get(period)!;
+      const prevPeriod = i > 0 ? periods[i - 1] : null;
+      const yearAgo = shiftPeriod(period, -12);
+      const prev = prevPeriod ? byPeriod.get(prevPeriod) : null;
+      const yoY = byPeriod.get(yearAgo) ?? null;
+
       let monthlyRate: string | null = null;
       if (prev != null && prev > 0) {
         monthlyRate = ((indexValue - prev) / prev).toString();
       }
+      let annualRate: string | null = null;
+      if (yoY != null && yoY > 0) {
+        annualRate = ((indexValue - yoY) / yoY).toString();
+      }
+
       rows.push({
         period,
         indexValue: String(indexValue),
         monthlyRate,
-        annualRate: null,
+        annualRate,
       });
-      prev = indexValue;
     }
 
     return rows;
   }
+}
+
+/** YYYY-MM dönemini n ay kaydırır. */
+function shiftPeriod(period: string, months: number): string {
+  const [y, m] = period.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + months, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function formatTr(date: Date): string {
