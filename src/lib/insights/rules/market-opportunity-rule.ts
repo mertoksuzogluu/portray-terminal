@@ -1,10 +1,12 @@
 import { appendDisclaimer, monthKey } from "./helpers";
 import type { InsightRule } from "../types";
-import { computeSeriesStats } from "./market-opportunity-rule-utils";
+import {
+  classifyBandSignal,
+  computeAdaptiveSeriesStats,
+} from "./market-opportunity-rule-utils";
 
 /**
- * Portföydeki varlıkların 2y fiyat bandına göre dip/zirve bağlamı.
- * Alım-satım tavsiyesi vermez; göreli konum bilgisi üretir.
+ * Portföy varlıklarında volatiliteye göre seçilen pencerede dip/zirve bağlamı.
  */
 export const marketOpportunityRule: InsightRule = {
   ruleId: "market-opportunity",
@@ -16,53 +18,59 @@ export const marketOpportunityRule: InsightRule = {
     const mk = monthKey(context.asOf);
 
     for (const asset of series) {
-      const stats = computeSeriesStats(asset.closes);
+      const stats = computeAdaptiveSeriesStats(
+        asset.closes,
+        asset.assetType
+      );
       if (!stats || stats.rangePosition == null) continue;
 
-      if (stats.rangePosition <= 0.15) {
+      const { signal } = classifyBandSignal(stats);
+      if (signal === "NEAR_LOW") {
         insights.push({
           category: "TREND" as const,
           severity: "POSITIVE" as const,
           periodType: "MONTHLY" as const,
-          fingerprint: `market-opportunity:${asset.symbol}:low:${mk}`,
-          title: `${asset.symbol}: 2 yıllık banda göre düşük bölge`,
+          fingerprint: `market-opportunity:${asset.symbol}:low:${mk}:${stats.lookbackLabel}`,
+          title: `${asset.symbol}: ${stats.lookbackLabel} banda göre düşük bölge`,
           message: appendDisclaimer(
-            `${asset.name} son 2 yıldaki fiyat bandının alt %${(
+            `${asset.name} volatiliteye göre seçilen ${stats.lookbackLabel} penceresinde bandın alt %${(
               stats.rangePosition * 100
             ).toFixed(0)} diliminde (güncel ${stats.current.toLocaleString(
               "tr-TR",
               { maximumFractionDigits: 2 }
-            )}, 2y dip ${stats.low.toLocaleString("tr-TR", {
+            )}, dip ${stats.low.toLocaleString("tr-TR", {
               maximumFractionDigits: 2,
-            })}). Portföy ağırlığınız bağlamında göreli ucuzluk sinyali olabilir; bu bir alım tavsiyesi değildir.`
+            })}). Bu bir alım tavsiyesi değildir.`
           ),
           metadata: {
             symbol: asset.symbol,
-            signal: "NEAR_2Y_LOW",
+            signal: "NEAR_LOW",
             rangePosition: stats.rangePosition,
-            drawdownFromHigh: stats.drawdownFromHigh,
+            lookbackLabel: stats.lookbackLabel,
+            realizedVol: stats.realizedVol,
           },
         });
-      } else if (stats.rangePosition >= 0.85) {
+      } else if (signal === "NEAR_HIGH") {
         insights.push({
           category: "TREND" as const,
           severity: "WARNING" as const,
           periodType: "MONTHLY" as const,
-          fingerprint: `market-opportunity:${asset.symbol}:high:${mk}`,
-          title: `${asset.symbol}: 2 yıllık banda göre yüksek bölge`,
+          fingerprint: `market-opportunity:${asset.symbol}:high:${mk}:${stats.lookbackLabel}`,
+          title: `${asset.symbol}: ${stats.lookbackLabel} banda göre yüksek bölge`,
           message: appendDisclaimer(
-            `${asset.name} son 2 yıldaki bandın üst bölgesinde (güncel ${stats.current.toLocaleString(
+            `${asset.name} ${stats.lookbackLabel} penceresinde bandın üst bölgesinde (güncel ${stats.current.toLocaleString(
               "tr-TR",
               { maximumFractionDigits: 2 }
-            )}, 2y zirve ${stats.high.toLocaleString("tr-TR", {
+            )}, zirve ${stats.high.toLocaleString("tr-TR", {
               maximumFractionDigits: 2,
-            })}). Konsantrasyon ve kar realizasyonu açısından izlenebilir; bu bir satış tavsiyesi değildir.`
+            })}). Bu bir satış tavsiyesi değildir.`
           ),
           metadata: {
             symbol: asset.symbol,
-            signal: "NEAR_2Y_HIGH",
+            signal: "NEAR_HIGH",
             rangePosition: stats.rangePosition,
-            drawdownFromHigh: stats.drawdownFromHigh,
+            lookbackLabel: stats.lookbackLabel,
+            realizedVol: stats.realizedVol,
           },
         });
       }

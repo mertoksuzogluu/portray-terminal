@@ -48,13 +48,22 @@ export async function POST() {
       // enflasyon opsiyonel — fiyat güncellemesini bloklamasın
     }
 
-    // 2b) Portföy + izleme varlıkları için 2y geçmişi doldur (eksikse).
+    // 2b) Portföy + bu haftanın izleme listesi için geçmiş doldur.
     let history: Awaited<ReturnType<typeof syncHistoricalPrices>> = {
       processed: 0,
       skipped: 0,
       errors: [],
     };
     try {
+      const { pickWeeklyWatchSymbols } = await import(
+        "@/lib/data/market-watch-universe"
+      );
+      const { ensureWatchAssets } = await import(
+        "@/lib/services/market-opportunity"
+      );
+      const weekly = pickWeeklyWatchSymbols({ stockCount: 6 });
+      const watchIds = await ensureWatchAssets(weekly.all);
+
       const held = await prisma.positionDailySnapshot.findMany({
         where: {
           portfolioId: { in: portfolios.map((p) => p.id) },
@@ -64,21 +73,14 @@ export async function POST() {
         select: { assetId: true },
         take: 30,
       });
-      const watch = await prisma.asset.findMany({
-        where: {
-          isActive: true,
-          symbol: { in: ["GRAMALTIN", "USDTRY", "THYAO", "TUPRS"] },
-        },
-        select: { id: true },
-      });
       const assetIds = [
-        ...new Set([...held.map((h) => h.assetId), ...watch.map((w) => w.id)]),
+        ...new Set([...held.map((h) => h.assetId), ...watchIds.values()]),
       ];
       if (assetIds.length) {
         history = await syncHistoricalPrices({
           assetIds,
-          years: 2,
-          minPoints: 180,
+          years: 1,
+          minPoints: 60,
         });
       }
     } catch (err) {

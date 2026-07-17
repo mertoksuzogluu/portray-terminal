@@ -12,8 +12,8 @@ import { formatNumber, formatPercentPlain } from "@/lib/format/tr";
 import { DISCLAIMER } from "@/lib/constants/nav";
 
 type OpportunitySignal =
-  | "NEAR_2Y_LOW"
-  | "NEAR_2Y_HIGH"
+  | "NEAR_LOW"
+  | "NEAR_HIGH"
   | "MID_RANGE"
   | "INSUFFICIENT_DATA";
 
@@ -33,6 +33,10 @@ interface AssetOpportunity {
   return1y: number | null;
   return3m: number | null;
   observationCount: number;
+  lookbackDays: number;
+  lookbackLabel: string;
+  realizedVol: number | null;
+  volBucket: "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN";
   signal: OpportunitySignal;
   title: string;
   message: string;
@@ -42,9 +46,12 @@ interface AssetOpportunity {
 interface MarketAnalysisData {
   asOf: string;
   years: number;
+  weekKey: string;
+  weekLabel: string;
   opportunities: AssetOpportunity[];
   portfolioHighlights: AssetOpportunity[];
   watchlistHighlights: AssetOpportunity[];
+  methodology: string;
   disclaimer: string;
   historySync?: {
     processed: number;
@@ -53,16 +60,16 @@ interface MarketAnalysisData {
   } | null;
 }
 
-function signalBadge(signal: OpportunitySignal) {
+function signalBadge(signal: OpportunitySignal, lookbackLabel: string) {
   switch (signal) {
-    case "NEAR_2Y_LOW":
-      return <Badge variant="positive">2y dip bölgesi</Badge>;
-    case "NEAR_2Y_HIGH":
-      return <Badge variant="warning">2y zirve bölgesi</Badge>;
+    case "NEAR_LOW":
+      return <Badge variant="positive">{lookbackLabel} dip</Badge>;
+    case "NEAR_HIGH":
+      return <Badge variant="warning">{lookbackLabel} zirve</Badge>;
     case "INSUFFICIENT_DATA":
       return <Badge variant="secondary">Yetersiz veri</Badge>;
     default:
-      return <Badge variant="outline">Orta bant</Badge>;
+      return <Badge variant="outline">{lookbackLabel} orta</Badge>;
   }
 }
 
@@ -92,7 +99,15 @@ function OpportunityRow({ o }: { o: AssetOpportunity }) {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{o.symbol}</span>
-            {signalBadge(o.signal)}
+            {signalBadge(o.signal, o.lookbackLabel)}
+            {o.volBucket !== "UNKNOWN" && (
+              <Badge variant="muted" className="text-[10px]">
+                vol {o.volBucket.toLowerCase()}
+                {o.realizedVol != null
+                  ? ` · %${(o.realizedVol * 100).toFixed(0)}`
+                  : ""}
+              </Badge>
+            )}
             {o.inPortfolio && (
               <Badge variant="outline" className="text-[10px]">
                 Portföy
@@ -107,21 +122,21 @@ function OpportunityRow({ o }: { o: AssetOpportunity }) {
         <div className="text-right text-sm tabular-nums">
           <div>{formatNumber(o.currentPrice, 2)}</div>
           <div className="text-xs text-muted-foreground">
-            {o.observationCount} gün
+            {o.lookbackDays || o.observationCount} gün
           </div>
         </div>
       </div>
 
       <RangeBar position={o.rangePosition} />
       <div className="flex justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
-        <span>2y dip {formatNumber(o.low2y, 2)}</span>
+        <span>Dip {formatNumber(o.low2y, 2)}</span>
         <span>
           Bant{" "}
           {o.rangePosition == null
             ? "—"
             : `%${(o.rangePosition * 100).toFixed(0)}`}
         </span>
-        <span>2y zirve {formatNumber(o.high2y, 2)}</span>
+        <span>Zirve {formatNumber(o.high2y, 2)}</span>
       </div>
 
       <p className="text-sm leading-relaxed text-muted-foreground">{o.message}</p>
@@ -192,8 +207,8 @@ export default function MarketPage() {
     );
   }
 
-  const lows = data.opportunities.filter((o) => o.signal === "NEAR_2Y_LOW");
-  const highs = data.opportunities.filter((o) => o.signal === "NEAR_2Y_HIGH");
+  const lows = data.opportunities.filter((o) => o.signal === "NEAR_LOW");
+  const highs = data.opportunities.filter((o) => o.signal === "NEAR_HIGH");
   const insufficient = data.opportunities.filter(
     (o) => o.signal === "INSUFFICIENT_DATA"
   );
@@ -204,8 +219,7 @@ export default function MarketPage() {
         <div>
           <h1 className="font-display text-2xl tracking-tight">Piyasa Bağlamı</h1>
           <p className="text-sm text-muted-foreground">
-            Son {data.years} yıllık fiyat bandı · {data.asOf} · kişiye özel
-            (portföy + izleme)
+            {data.weekLabel} · vol-ayarlı pencere · {data.asOf}
           </p>
         </div>
         <Button
@@ -219,6 +233,8 @@ export default function MarketPage() {
           Geçmişi doldur & yenile
         </Button>
       </div>
+
+      <p className="text-xs text-muted-foreground">{data.methodology}</p>
 
       {data.historySync && (
         <p className="text-xs text-muted-foreground">
@@ -267,7 +283,7 @@ export default function MarketPage() {
           <CardHeader>
             <CardTitle>Portföyünüz</CardTitle>
             <CardDescription>
-              Elinizdeki varlıkların 2 yıllık banda göre göreli konumu
+              Volatiliteye göre seçilen pencerede göreli konum
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -285,9 +301,9 @@ export default function MarketPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>İzleme listesi</CardTitle>
+            <CardTitle>Bu haftanın izleme listesi</CardTitle>
             <CardDescription>
-              Altın, döviz ve örnek hisseler — portföy dışı bağlam
+              Altın/döviz sabit; 6 hisse her Pazartesi döner ({data.weekKey})
             </CardDescription>
           </CardHeader>
           <CardContent>

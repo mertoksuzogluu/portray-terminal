@@ -1,18 +1,20 @@
 import { NextRequest } from "next/server";
 import { requireUser, getDefaultPortfolioId } from "@/lib/auth/session";
 import { jsonError, jsonOk } from "@/lib/api/response";
-import { analyzeMarketOpportunities } from "@/lib/services/market-opportunity";
+import {
+  analyzeMarketOpportunities,
+  ensureWatchAssets,
+} from "@/lib/services/market-opportunity";
 import { syncHistoricalPrices } from "@/lib/services/historical-sync";
+import { pickWeeklyWatchSymbols } from "@/lib/data/market-watch-universe";
 import { prisma } from "@/lib/db/prisma";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-const WATCH_SYMBOLS = ["GRAMALTIN", "USDTRY", "THYAO", "TUPRS"];
-
 /**
- * Portföy + izleme listesi için 2y fiyat bandı analizi.
- * ?refresh=1 → eksik geçmiş fiyatları doldurur (Twelve Data / TEFAS).
+ * Portföy + haftalık izleme için volatilite-ayarlı bant analizi.
+ * ?refresh=1 → haftanın varlıklarını garanti et + geçmiş doldur.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -26,6 +28,9 @@ export async function GET(req: NextRequest) {
     let history: Awaited<ReturnType<typeof syncHistoricalPrices>> | null = null;
 
     if (force) {
+      const weekly = pickWeeklyWatchSymbols({ stockCount: 6 });
+      const watchIds = await ensureWatchAssets(weekly.all);
+
       const held = await prisma.positionDailySnapshot.findMany({
         where: { portfolioId, accountId: "" },
         distinct: ["assetId"],
@@ -33,24 +38,18 @@ export async function GET(req: NextRequest) {
         orderBy: { snapshotDate: "desc" },
         take: 40,
       });
-      const watch = await prisma.asset.findMany({
-        where: { symbol: { in: WATCH_SYMBOLS }, isActive: true },
-        select: { id: true },
-      });
+
       const assetIds = [
-        ...new Set([...held.map((h) => h.assetId), ...watch.map((w) => w.id)]),
+        ...new Set([...held.map((h) => h.assetId), ...watchIds.values()]),
       ];
       history = await syncHistoricalPrices({
         assetIds,
-        years: 2,
-        minPoints: 180,
+        years: 1,
+        minPoints: 60,
       });
     }
 
-    const data = await analyzeMarketOpportunities({
-      portfolioId,
-      years: 2,
-    });
+    const data = await analyzeMarketOpportunities({ portfolioId });
 
     return jsonOk({
       ...data,
