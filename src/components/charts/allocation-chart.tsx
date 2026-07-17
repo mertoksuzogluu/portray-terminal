@@ -56,7 +56,7 @@ export function AllocationChart({ data }: { data: AllocationSlice[] }) {
             formatter={(value, _name, item) => {
               const payload = item.payload as AllocationSlice;
               return [
-                `${formatMoney(Number(value))} (${formatPercentPlain(payload.weight, 1, false)})`,
+                `${formatMoney(Number(value))} (${formatPercentPlain(payload.weight, 1)})`,
                 payload.name,
               ];
             }}
@@ -74,7 +74,7 @@ export function AllocationChart({ data }: { data: AllocationSlice[] }) {
               {item.name}
             </span>
             <span className="tabular-nums text-muted-foreground">
-              {formatPercentPlain(item.weight, 1, false)}
+              {formatPercentPlain(item.weight, 1)}
             </span>
           </li>
         ))}
