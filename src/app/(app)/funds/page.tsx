@@ -22,6 +22,11 @@ interface MonthlyFundAnalysis {
     code: string;
     name: string;
     returnPct: number;
+    return1m: number | null;
+    return3m: number | null;
+    return6m: number | null;
+    returnYtd: number | null;
+    return1y: number | null;
     riskLevel: number | null;
     category: string | null;
     founder: string | null;
@@ -39,6 +44,18 @@ interface MonthlyFundAnalysis {
   portfolioOverlap: { code: string; name: string; returnPct: number }[];
   fetchedAt: string;
   disclaimer: string;
+}
+
+function fmtPct(value: number | null | undefined): string {
+  if (value == null) return "—";
+  return formatPercentPlain(value, 2, false);
+}
+
+function pctClass(value: number | null | undefined): string {
+  if (value == null) return "text-muted-foreground";
+  if (value > 0) return "text-positive";
+  if (value < 0) return "text-negative";
+  return "text-muted-foreground";
 }
 
 export default function FundsPage() {
@@ -135,12 +152,13 @@ export default function FundsPage() {
               En İyi 10 Fon — {data.periodLabel}
             </CardTitle>
             <CardDescription>
-              Takvim ayı getirisi (TEFAS). Portföyünüzdekiler işaretlenir.
+              Sıralama {data.periodLabel} takvim ayına göre. 1A / 3A / 6A rolling
+              dönem getirileri TEFAS standart alanlarıdır.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-muted-foreground">
                     <th className="pb-2 pr-2 font-medium">#</th>
@@ -148,7 +166,12 @@ export default function FundsPage() {
                     <th className="pb-2 pr-2 font-medium">Fon</th>
                     <th className="pb-2 pr-2 font-medium">Kategori</th>
                     <th className="pb-2 pr-2 font-medium text-right">Risk</th>
-                    <th className="pb-2 font-medium text-right">Getiri</th>
+                    <th className="pb-2 pr-2 font-medium text-right" title={data.periodLabel}>
+                      Ay
+                    </th>
+                    <th className="pb-2 pr-2 font-medium text-right">1A</th>
+                    <th className="pb-2 pr-2 font-medium text-right">3A</th>
+                    <th className="pb-2 font-medium text-right">6A</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -168,17 +191,26 @@ export default function FundsPage() {
                           </Badge>
                         )}
                       </td>
-                      <td className="max-w-[220px] truncate py-2.5 pr-2" title={f.name}>
+                      <td className="max-w-[200px] truncate py-2.5 pr-2" title={f.name}>
                         {f.name}
                       </td>
-                      <td className="max-w-[140px] truncate py-2.5 pr-2 text-muted-foreground">
+                      <td className="max-w-[120px] truncate py-2.5 pr-2 text-muted-foreground">
                         {f.category ?? "—"}
                       </td>
                       <td className="py-2.5 pr-2 text-right tabular-nums text-muted-foreground">
                         {f.riskLevel != null ? f.riskLevel : "—"}
                       </td>
-                      <td className="py-2.5 text-right font-medium tabular-nums text-positive">
-                        {formatPercentPlain(f.returnPct, 2, false)}
+                      <td className={`py-2.5 pr-2 text-right font-medium tabular-nums ${pctClass(f.returnPct)}`}>
+                        {fmtPct(f.returnPct)}
+                      </td>
+                      <td className={`py-2.5 pr-2 text-right tabular-nums ${pctClass(f.return1m)}`}>
+                        {fmtPct(f.return1m)}
+                      </td>
+                      <td className={`py-2.5 pr-2 text-right font-medium tabular-nums ${pctClass(f.return3m)}`}>
+                        {fmtPct(f.return3m)}
+                      </td>
+                      <td className={`py-2.5 text-right tabular-nums ${pctClass(f.return6m)}`}>
+                        {fmtPct(f.return6m)}
                       </td>
                     </tr>
                   ))}

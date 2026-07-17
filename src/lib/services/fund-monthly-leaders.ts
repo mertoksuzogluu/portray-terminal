@@ -8,7 +8,18 @@ export interface MonthlyFundLeader {
   rank: number;
   code: string;
   name: string;
+  /** Seçilen takvim ayı getirisi (%). */
   returnPct: number;
+  /** Son 1 ay rolling getiri (%). */
+  return1m: number | null;
+  /** Son 3 ay rolling getiri (%). */
+  return3m: number | null;
+  /** Son 6 ay rolling getiri (%). */
+  return6m: number | null;
+  /** Yıl başından beri getiri (%). */
+  returnYtd: number | null;
+  /** Son 1 yıl getiri (%). */
+  return1y: number | null;
   riskLevel: number | null;
   category: string | null;
   founder: string | null;
@@ -79,6 +90,8 @@ function buildInsights(
   const leader = top[0];
   const topAvg = mean(top.map((t) => t.returnPct));
   const spread = leader.returnPct - top[top.length - 1].returnPct;
+  const with3m = top.filter((t) => t.return3m != null);
+  const avg3m = with3m.length ? mean(with3m.map((t) => t.return3m!)) : null;
 
   insights.push({
     title: "Ayın lideri",
@@ -91,6 +104,15 @@ function buildInsights(
     message: `İlk 10 fonun ortalama getirisi %${topAvg.toFixed(2)}. Lider ile 10. sıradaki fark ${spread.toFixed(2)} puan — ${spread > 15 ? "üst uç ayrışması yüksek" : "üst grup görece sıkışık"}.`,
     severity: "INFO",
   });
+
+  if (avg3m != null && with3m.length > 0) {
+    const best3m = [...with3m].sort((a, b) => (b.return3m ?? 0) - (a.return3m ?? 0))[0];
+    insights.push({
+      title: "Son 3 ay",
+      message: `Listedeki fonların son 3 ay ortalama getirisi %${avg3m.toFixed(2)}. 3 ayda en güçlüsü ${best3m.code} (%${(best3m.return3m ?? 0).toFixed(2)}). Ay sıralaması ile 3 aylık sıralama farklı olabilir.`,
+      severity: "INFO",
+    });
+  }
 
   if (categories.length > 0) {
     const dominant = categories[0];
@@ -161,7 +183,7 @@ export async function getMonthlyFundLeaders(options?: {
   }
 
   const periodLabel = format(start, "LLLL yyyy", { locale: tr });
-  const cacheKey = `${fundType}:${format(start, "yyyy-MM")}:${topN}`;
+  const cacheKey = `v2:${fundType}:${format(start, "yyyy-MM")}:${topN}`;
 
   if (!options?.forceRefresh) {
     const hit = cache.get(cacheKey);
@@ -179,12 +201,20 @@ export async function getMonthlyFundLeaders(options?: {
     throw new Error("Fon dönemsel getiri sağlayıcısı yapılandırılmamış.");
   }
 
-  const rows = await provider.getPeriodReturns(fundType, start, end);
+  // Takvim ayı sıralaması + standart dönemler (1a/3a/6a/…) paralel
+  const [rows, rollingRows] = await Promise.all([
+    provider.getPeriodReturns(fundType, start, end),
+    provider.getPeriodReturns(fundType).catch(() => []),
+  ]);
   if (rows.length === 0) {
     throw new Error(
       `TEFAS ${periodLabel} için getiri verisi döndürmedi. Bir süre sonra tekrar deneyin.`
     );
   }
+
+  const rollingByCode = new Map(
+    rollingRows.map((r) => [r.code, r] as const)
+  );
 
   const returns = rows.map((r) => r.periodReturnPct);
   const marketMedianReturn = median(returns);
@@ -195,16 +225,24 @@ export async function getMonthlyFundLeaders(options?: {
   );
   const topRows = sorted.slice(0, topN);
 
-  const top: MonthlyFundLeader[] = topRows.map((r, i) => ({
-    rank: i + 1,
-    code: r.code,
-    name: r.name,
-    returnPct: r.periodReturnPct,
-    riskLevel: r.riskLevel,
-    category: r.category,
-    founder: r.founder,
-    inPortfolio: false,
-  }));
+  const top: MonthlyFundLeader[] = topRows.map((r, i) => {
+    const roll = rollingByCode.get(r.code);
+    return {
+      rank: i + 1,
+      code: r.code,
+      name: r.name,
+      returnPct: r.periodReturnPct,
+      return1m: roll?.return1m ?? null,
+      return3m: roll?.return3m ?? null,
+      return6m: roll?.return6m ?? null,
+      returnYtd: roll?.returnYtd ?? null,
+      return1y: roll?.return1y ?? null,
+      riskLevel: r.riskLevel ?? roll?.riskLevel ?? null,
+      category: r.category ?? roll?.category ?? null,
+      founder: r.founder ?? roll?.founder ?? null,
+      inPortfolio: false,
+    };
+  });
 
   const categoryMap = new Map<string, number[]>();
   for (const t of top) {
