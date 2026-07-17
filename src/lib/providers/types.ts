@@ -67,6 +67,22 @@ export interface FundHistoricalPrice {
   source: string;
 }
 
+/** TEFAS dönemsel getiri satırı (yüzde olarak, örn. 12.5 = %12,5). */
+export interface FundPeriodReturn {
+  code: string;
+  name: string;
+  /** Dönem getirisi yüzde puanı (API ham değer). */
+  periodReturnPct: number;
+  riskLevel: number | null;
+  category: string | null;
+  founder: string | null;
+  return1m: number | null;
+  return3m: number | null;
+  return6m: number | null;
+  returnYtd: number | null;
+  return1y: number | null;
+}
+
 export interface FundDataProvider {
   readonly name: string;
   getFundQuote(code: string): Promise<FundQuote>;
@@ -76,6 +92,12 @@ export interface FundDataProvider {
     startDate: Date,
     endDate: Date
   ): Promise<FundHistoricalPrice[]>;
+  /** Takvim aralığı verilirse o aralığın getirisi; yoksa standart dönemler. */
+  getPeriodReturns?(
+    fundType: "YAT" | "EMK" | "BYF",
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<FundPeriodReturn[]>;
   isConfigured(): boolean;
 }
 

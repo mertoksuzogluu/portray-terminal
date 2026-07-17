@@ -12,6 +12,7 @@ import {
   LineChart,
   Scale,
   Settings,
+  Trophy,
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -23,6 +24,7 @@ const ICONS = {
   LayoutDashboard,
   Briefcase,
   ArrowLeftRight,
+  Trophy,
   LineChart,
   Scale,
   GitCompare,

@@ -1,6 +1,7 @@
 import type {
   FundDataProvider,
   FundHistoricalPrice,
+  FundPeriodReturn,
   FundQuote,
 } from "./types";
 
@@ -11,6 +12,7 @@ import type {
  */
 const TEFAS_BASE = "https://www.tefas.gov.tr";
 const PRICE_ENDPOINT = "/api/funds/fonFiyatBilgiGetir";
+const RETURNS_ENDPOINT = "/api/funds/fonGetiriBazliBilgiGetir";
 
 const TEFAS_HEADERS: Record<string, string> = {
   "User-Agent":
@@ -32,9 +34,29 @@ interface TefasRow {
   fiyat?: number;
 }
 
+interface TefasReturnRow {
+  fonKodu?: string;
+  fonUnvan?: string;
+  getiriOrani?: number | string | null;
+  getiri1a?: number | string | null;
+  getiri3a?: number | string | null;
+  getiri6a?: number | string | null;
+  getiriyb?: number | string | null;
+  getiri1y?: number | string | null;
+  riskDegeri?: number | string | null;
+  fonTurAciklama?: string | null;
+  kurucuUnvan?: string | null;
+  kurucuKod?: string | null;
+}
+
 interface TefasResponse {
   resultList?: TefasRow[];
   data?: TefasRow[];
+}
+
+interface TefasReturnResponse {
+  resultList?: TefasReturnRow[];
+  data?: TefasReturnRow[];
 }
 
 function sleep(ms: number): Promise<void> {
@@ -49,6 +71,21 @@ function parseTefasDate(value: string | undefined): Date {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+function toYyyymmdd(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
+}
+
+function parsePct(value: number | string | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const normalized = value.replace(",", ".").replace("%", "").trim();
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** İstenen geçmişi API'nin kabul ettiği ay değerine yuvarlar. */
 function monthsBack(start: Date): number {
   const days = Math.max(0, Math.floor((Date.now() - start.getTime()) / 86_400_000));
@@ -57,6 +94,42 @@ function monthsBack(start: Date): number {
     if (p >= needed) return p;
   }
   return 60;
+}
+
+async function tefasPost<T>(
+  endpoint: string,
+  payload: Record<string, unknown>
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(`${TEFAS_BASE}${endpoint}`, {
+        method: "POST",
+        headers: TEFAS_HEADERS,
+        body: JSON.stringify(payload),
+        cache: "no-store",
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!res.ok) {
+        throw new Error(`TEFAS HTTP ${res.status}`);
+      }
+
+      const text = await res.text();
+      if (!text.trim()) {
+        throw new Error("TEFAS boş yanıt döndürdü (bot koruması olabilir).");
+      }
+
+      return JSON.parse(text) as T;
+    } catch (error) {
+      lastError = error;
+      await sleep(500 * 2 ** attempt);
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("TEFAS isteği başarısız");
 }
 
 export class TefasFundProvider implements FundDataProvider {
@@ -149,42 +222,79 @@ export class TefasFundProvider implements FundDataProvider {
       .sort((a, b) => a.date.getTime() - b.date.getTime());
   }
 
+  /**
+   * Tüm fonların dönemsel getirisi — tek istek.
+   * start/end verilirse takvim aralığı (getiriOrani); yoksa 1a/3a/… alanları.
+   */
+  async getPeriodReturns(
+    fundType: "YAT" | "EMK" | "BYF" = "YAT",
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<FundPeriodReturn[]> {
+    const ranged = Boolean(startDate && endDate);
+    const payload: Record<string, unknown> = {
+      dil: "TR",
+      fonTipi: fundType,
+      kurucuKodu: null,
+      sfonTurKod: null,
+      fonTurAciklama: null,
+      islem: 1,
+      fonTurKod: null,
+      fonGrubu: null,
+      donemGetiri1a: ranged ? "0" : "1",
+      donemGetiri3a: ranged ? "0" : "1",
+      donemGetiri6a: ranged ? "0" : "1",
+      donemGetiri1y: ranged ? "0" : "1",
+      donemGetiriyb: ranged ? "0" : "1",
+      donemGetiri3y: ranged ? "0" : "1",
+      donemGetiri5y: ranged ? "0" : "1",
+      basTarih: ranged && startDate ? toYyyymmdd(startDate) : null,
+      bitTarih: ranged && endDate ? toYyyymmdd(endDate) : null,
+      calismaTipi: ranged ? 1 : 2,
+      getiriOrani: "1",
+    };
+
+    const json = await tefasPost<TefasReturnResponse | TefasReturnRow[]>(
+      RETURNS_ENDPOINT,
+      payload
+    );
+    const rows = Array.isArray(json)
+      ? json
+      : (json.resultList ?? json.data ?? []);
+
+    return rows
+      .map((r): FundPeriodReturn | null => {
+        const code = (r.fonKodu ?? "").trim().toUpperCase();
+        if (!code) return null;
+        const period =
+          parsePct(r.getiriOrani) ??
+          (ranged ? null : parsePct(r.getiri1a));
+        if (period == null) return null;
+        return {
+          code,
+          name: (r.fonUnvan ?? code).trim(),
+          periodReturnPct: period,
+          riskLevel: parsePct(r.riskDegeri),
+          category: r.fonTurAciklama?.trim() || null,
+          founder: r.kurucuUnvan?.trim() || r.kurucuKod?.trim() || null,
+          return1m: parsePct(r.getiri1a),
+          return3m: parsePct(r.getiri3a),
+          return6m: parsePct(r.getiri6a),
+          returnYtd: parsePct(r.getiriyb),
+          return1y: parsePct(r.getiri1y),
+        };
+      })
+      .filter((r): r is FundPeriodReturn => r != null);
+  }
+
   private async fetchRaw(code: string, periyod: number): Promise<TefasRow[]> {
-    const payload = JSON.stringify({ fonKodu: code, dil: "TR", periyod });
-
-    let lastError: unknown;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const res = await fetch(`${TEFAS_BASE}${PRICE_ENDPOINT}`, {
-          method: "POST",
-          headers: TEFAS_HEADERS,
-          body: payload,
-          cache: "no-store",
-          signal: AbortSignal.timeout(8000),
-        });
-
-        if (!res.ok) {
-          throw new Error(`TEFAS HTTP ${res.status}`);
-        }
-
-        const text = await res.text();
-        if (!text.trim()) {
-          // Akamai bot koruması boş gövde döndürmüş olabilir
-          throw new Error("TEFAS boş yanıt döndürdü (bot koruması olabilir).");
-        }
-
-        const json = JSON.parse(text) as TefasResponse | TefasRow[];
-        if (Array.isArray(json)) return json;
-        return json.resultList ?? json.data ?? [];
-      } catch (error) {
-        lastError = error;
-        await sleep(500 * 2 ** attempt);
-      }
-    }
-
-    throw lastError instanceof Error
-      ? lastError
-      : new Error("TEFAS isteği başarısız");
+    const json = await tefasPost<TefasResponse | TefasRow[]>(PRICE_ENDPOINT, {
+      fonKodu: code,
+      dil: "TR",
+      periyod,
+    });
+    if (Array.isArray(json)) return json;
+    return json.resultList ?? json.data ?? [];
   }
 }
 
