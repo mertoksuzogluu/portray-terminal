@@ -193,9 +193,9 @@ export async function createDailySnapshot(
 
   const factor = dailyTwrFactor(beginValue, totalMarketValue, externalCashFlow);
   const dailyReturn = dailyReturnFromFactor(factor);
-  const dailyProfitLoss = previous
-    ? totalMarketValue.minus(beginValue).minus(externalCashFlow)
-    : d(0);
+  // Günlük K/Z = değer değişimi eksi o gün dışarıdan giren para (alım/nakit).
+  // Böylece alım günü, alım tutarı kâr gibi görünmez.
+  const dailyProfitLoss = totalMarketValue.minus(beginValue).minus(externalCashFlow);
 
   const prevTwr = previous?.twrCumulative
     ? d(previous.twrCumulative.toString())
@@ -253,6 +253,34 @@ export async function createDailySnapshot(
     prevPositions.map((p) => [p.assetId, p])
   );
 
+  // Bugün varlık bazında net yatırılan tutar (alım maliyeti - satış geliri).
+  // Günlük K/Z'den düşülür ki yeni alım "kâr" gibi görünmesin.
+  const investedTodayByAsset = new Map<string, Decimal>();
+  for (const tx of allTx) {
+    if (!tx.assetId) continue;
+    if (startOfDay(tx.transactionDate).getTime() !== asOf.getTime()) continue;
+    const fx = d(tx.fxRateToBase.toString());
+    const qty = d(tx.quantity.toString());
+    const price = d(tx.unitPrice.toString()).times(fx);
+    const fees = d(tx.commission.toString())
+      .plus(tx.tax.toString())
+      .plus(tx.otherCost.toString())
+      .times(fx);
+    let flow = d(0);
+    if (tx.transactionType === "BUY" || tx.transactionType === "TRANSFER_IN") {
+      flow = qty.times(price).plus(fees);
+    } else if (
+      tx.transactionType === "SELL" ||
+      tx.transactionType === "TRANSFER_OUT"
+    ) {
+      flow = qty.times(price).minus(fees).neg();
+    }
+    investedTodayByAsset.set(
+      tx.assetId,
+      (investedTodayByAsset.get(tx.assetId) ?? d(0)).plus(flow)
+    );
+  }
+
   const portfolioSnapshot = await prisma.portfolioDailySnapshot.upsert({
     where: {
       portfolioId_snapshotDate: { portfolioId, snapshotDate: asOf },
@@ -309,8 +337,11 @@ export async function createDailySnapshot(
   for (const row of positionRows) {
     const prev = prevPosMap.get(row.assetId);
     const prevValue = prev ? d(prev.marketValue.toString()) : d(0);
-    const dailyPl = row.marketValue.minus(prevValue);
-    const dailyRet = prevValue.isZero() ? null : dailyPl.div(prevValue);
+    const investedToday = investedTodayByAsset.get(row.assetId) ?? d(0);
+    // Günlük K/Z: piyasa değeri değişimi eksi bugün bu varlığa yatırılan para.
+    const dailyPl = row.marketValue.minus(prevValue).minus(investedToday);
+    const dailyBase = prevValue.isZero() ? investedToday : prevValue;
+    const dailyRet = dailyBase.isZero() ? null : dailyPl.div(dailyBase);
     const contrib =
       dailyReturn && row.weight
         ? row.weight.times(dailyRet ?? 0)
