@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton";
 import { PnlValue } from "@/components/shared/pnl-value";
+import { RefreshPricesButton } from "@/components/shared/refresh-prices-button";
 import { ApiError, serverFetch } from "@/lib/api/server-fetch";
 import { formatDateTR, formatMoney, formatPercentPlain } from "@/lib/format/tr";
 import { DISCLAIMER } from "@/lib/constants/nav";
@@ -50,13 +51,16 @@ async function DashboardContent() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl tracking-tight">Portföy Özeti</h1>
-        <p className="text-sm text-muted-foreground">
-          {summary.snapshotDate
-            ? `Son güncelleme: ${formatDateTR(summary.snapshotDate)}`
-            : "Henüz anlık görüntü yok"}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl tracking-tight">Portföy Özeti</h1>
+          <p className="text-sm text-muted-foreground">
+            {summary.snapshotDate
+              ? `Son güncelleme: ${formatDateTR(summary.snapshotDate)}`
+              : "Henüz anlık görüntü yok"}
+          </p>
+        </div>
+        <RefreshPricesButton />
       </div>
 
       {isEmpty ? (
