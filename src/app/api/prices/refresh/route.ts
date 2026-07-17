@@ -2,10 +2,11 @@ import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { syncInflationData, syncMarketData } from "@/lib/services/market-sync";
+import { syncHistoricalPrices } from "@/lib/services/historical-sync";
 import { createDailySnapshot } from "@/lib/services/snapshot-service";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * Kullanıcı tetiklemeli fiyat yenileme: canlı fiyatları çeker (force),
@@ -47,6 +48,47 @@ export async function POST() {
       // enflasyon opsiyonel — fiyat güncellemesini bloklamasın
     }
 
+    // 2b) Portföy + izleme varlıkları için 2y geçmişi doldur (eksikse).
+    let history: Awaited<ReturnType<typeof syncHistoricalPrices>> = {
+      processed: 0,
+      skipped: 0,
+      errors: [],
+    };
+    try {
+      const held = await prisma.positionDailySnapshot.findMany({
+        where: {
+          portfolioId: { in: portfolios.map((p) => p.id) },
+          accountId: "",
+        },
+        distinct: ["assetId"],
+        select: { assetId: true },
+        take: 30,
+      });
+      const watch = await prisma.asset.findMany({
+        where: {
+          isActive: true,
+          symbol: { in: ["GRAMALTIN", "USDTRY", "THYAO", "TUPRS"] },
+        },
+        select: { id: true },
+      });
+      const assetIds = [
+        ...new Set([...held.map((h) => h.assetId), ...watch.map((w) => w.id)]),
+      ];
+      if (assetIds.length) {
+        history = await syncHistoricalPrices({
+          assetIds,
+          years: 2,
+          minPoints: 180,
+        });
+      }
+    } catch (err) {
+      history = {
+        processed: 0,
+        skipped: 0,
+        errors: [err instanceof Error ? err.message : "Geçmiş senkron hatası"],
+      };
+    }
+
     // 3) Güncel fiyatlarla snapshot'ı tazele.
     for (const p of portfolios) {
       await createDailySnapshot(p.id);
@@ -55,8 +97,9 @@ export async function POST() {
     return jsonOk({
       processed: market.processed,
       status: market.status,
-      errors: market.errors,
+      errors: [...market.errors, ...history.errors],
       portfolios: portfolios.length,
+      history,
     });
   } catch (error) {
     return jsonError(error, 400);

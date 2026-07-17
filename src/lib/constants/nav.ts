@@ -3,6 +3,7 @@ export const NAV_ITEMS = [
   { href: "/portfolio", label: "Portföy", icon: "Briefcase" as const },
   { href: "/transactions", label: "İşlemler", icon: "ArrowLeftRight" as const },
   { href: "/funds", label: "Fonlar", icon: "Trophy" as const },
+  { href: "/market", label: "Piyasa", icon: "CandlestickChart" as const },
   { href: "/analytics", label: "Analiz", icon: "LineChart" as const },
   { href: "/real-return", label: "Reel Getiri", icon: "Scale" as const },
   { href: "/benchmarks", label: "Karşılaştırma", icon: "GitCompare" as const },

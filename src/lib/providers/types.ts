@@ -44,6 +44,11 @@ export interface MarketDataProvider {
     startDate: Date,
     endDate: Date
   ): Promise<HistoricalPrice[]>;
+  getHistoricalPricesByProviderSymbol?(
+    providerSymbol: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<HistoricalPrice[]>;
   isConfigured(): boolean;
 }
 

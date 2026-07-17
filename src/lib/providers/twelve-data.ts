@@ -179,6 +179,22 @@ export class TwelveDataProvider implements MarketDataProvider {
     }
 
     const providerSymbol = toTwelveDataSymbol(symbol);
+    return this.getHistoricalPricesByProviderSymbol(
+      providerSymbol,
+      startDate,
+      endDate
+    );
+  }
+
+  async getHistoricalPricesByProviderSymbol(
+    providerSymbol: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<HistoricalPrice[]> {
+    if (!this.apiKey) {
+      throw new Error("Twelve Data API anahtarı yapılandırılmamış.");
+    }
+
     return this.fetchWithRetry(async () => {
       const url = new URL(`${BASE_URL}/time_series`);
       url.searchParams.set("symbol", providerSymbol);
@@ -189,7 +205,7 @@ export class TwelveDataProvider implements MarketDataProvider {
       url.searchParams.set("timezone", "Europe/Istanbul");
 
       const res = await fetch(url.toString(), {
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(15000),
       });
       if (res.status === 429) {
         throw Object.assign(new Error("Rate limit"), { status: 429 });

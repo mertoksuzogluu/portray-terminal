@@ -7,6 +7,7 @@ import { startOfDay } from "@/lib/utils/dates";
 import { ALL_INSIGHT_RULES } from "./rules";
 import type {
   AssetPriceQualityRecord,
+  AssetPriceSeriesRecord,
   BenchmarkContext,
   GeneratedInsight,
   InsightRule,
@@ -14,6 +15,7 @@ import type {
   PortfolioSnapshotRecord,
   PositionSnapshotRecord,
 } from "./types";
+import { loadAssetPriceSeriesForInsights } from "@/lib/services/market-opportunity";
 
 const SEVERITY_RANK: Record<GeneratedInsight["severity"], number> = {
   CRITICAL: 4,
@@ -199,6 +201,9 @@ export async function buildPortfolioAnalysisContext(
     dailyProfitLoss: d(p.dailyProfitLoss.toString()),
   }));
 
+  const assetPriceSeriesRaw = await loadAssetPriceSeriesForInsights(assetIds, 2);
+  const assetPriceSeries: AssetPriceSeriesRecord[] = assetPriceSeriesRaw;
+
   return {
     portfolioId,
     insightDate,
@@ -209,6 +214,7 @@ export async function buildPortfolioAnalysisContext(
     benchmarks: benchmarkContexts,
     inflationSeries,
     assetPriceQuality,
+    assetPriceSeries,
     riskFreeRateAnnual: d(portfolio.user.riskFreeRateAnnual.toString()),
     preferredBenchmarkSymbol: preferredBenchmark?.symbol ?? null,
   };

@@ -7,6 +7,7 @@ export { drawdownRule } from "./drawdown-rule";
 export { contributionRule } from "./contribution-rule";
 export { volatilityTrendRule } from "./volatility-trend-rule";
 export { dataQualityRule } from "./data-quality-rule";
+export { marketOpportunityRule } from "./market-opportunity-rule";
 
 import { monthlyPerformanceRule } from "./monthly-performance-rule";
 import { rollingAverageRule } from "./rolling-average-rule";
@@ -17,6 +18,7 @@ import { drawdownRule } from "./drawdown-rule";
 import { contributionRule } from "./contribution-rule";
 import { volatilityTrendRule } from "./volatility-trend-rule";
 import { dataQualityRule } from "./data-quality-rule";
+import { marketOpportunityRule } from "./market-opportunity-rule";
 import type { InsightRule } from "../types";
 
 export const ALL_INSIGHT_RULES: InsightRule[] = [
@@ -29,4 +31,5 @@ export const ALL_INSIGHT_RULES: InsightRule[] = [
   contributionRule,
   volatilityTrendRule,
   dataQualityRule,
+  marketOpportunityRule,
 ];

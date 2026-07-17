@@ -58,6 +58,14 @@ export interface AssetPriceQualityRecord {
   isDelayed: boolean;
 }
 
+export interface AssetPriceSeriesRecord {
+  assetId: string;
+  symbol: string;
+  name: string;
+  assetType: string;
+  closes: number[];
+}
+
 export interface PortfolioAnalysisContext {
   portfolioId: string;
   insightDate: Date;
@@ -68,6 +76,8 @@ export interface PortfolioAnalysisContext {
   benchmarks: BenchmarkContext[];
   inflationSeries: InflationPoint[];
   assetPriceQuality: AssetPriceQualityRecord[];
+  /** Portföy varlıklarının ~2y kapanış serisi (piyasa fırsat kuralları). */
+  assetPriceSeries: AssetPriceSeriesRecord[];
   riskFreeRateAnnual: Decimal;
   preferredBenchmarkSymbol: string | null;
 }
