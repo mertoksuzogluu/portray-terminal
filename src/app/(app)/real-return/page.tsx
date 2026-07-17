@@ -172,11 +172,16 @@ export default function RealReturnPage() {
           }
         />
         <MetricCard
-          title="Son Aylık Enflasyon"
+          title="Aylık Enflasyon Maliyeti"
           value={
-            data.summary.latestMonthlyInflation != null
-              ? formatPercentPlain(data.summary.latestMonthlyInflation * 100, 2, false)
-              : "—"
+            data.summary.latestMonthlyInflation != null ? (
+              <PnlValue
+                value={-Math.abs(data.summary.latestMonthlyInflation) * 100}
+                type="percent"
+              />
+            ) : (
+              "—"
+            )
           }
         />
       </div>
@@ -259,7 +264,9 @@ export default function RealReturnPage() {
                   <tr className="border-b border-border text-left text-xs text-muted-foreground">
                     <th className="pb-2 pr-2 font-medium">Dönem</th>
                     <th className="pb-2 pr-2 font-medium text-right">Endeks</th>
-                    <th className="pb-2 pr-2 font-medium text-right">Aylık</th>
+                    <th className="pb-2 pr-2 font-medium text-right">
+                      Aylık maliyet
+                    </th>
                     <th className="pb-2 font-medium text-right">Yıllık</th>
                   </tr>
                 </thead>
@@ -275,9 +282,13 @@ export default function RealReturnPage() {
                           maximumFractionDigits: 2,
                         })}
                       </td>
-                      <td className="py-2 pr-2 text-right tabular-nums">
+                      <td className="py-2 pr-2 text-right tabular-nums text-negative">
                         {row.monthlyRate != null
-                          ? formatPercentPlain(row.monthlyRate * 100, 2, false)
+                          ? formatPercentPlain(
+                              -Math.abs(row.monthlyRate) * 100,
+                              2,
+                              false
+                            )
                           : "—"}
                       </td>
                       <td className="py-2 text-right tabular-nums">
