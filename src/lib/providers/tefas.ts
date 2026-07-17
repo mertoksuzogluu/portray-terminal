@@ -160,6 +160,7 @@ export class TefasFundProvider implements FundDataProvider {
           headers: TEFAS_HEADERS,
           body: payload,
           cache: "no-store",
+          signal: AbortSignal.timeout(8000),
         });
 
         if (!res.ok) {

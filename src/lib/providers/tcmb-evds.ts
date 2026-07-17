@@ -49,7 +49,9 @@ export class TcmbEvdsFxProvider implements FxDataProvider {
     url.searchParams.set("type", "json");
     url.searchParams.set("key", this.apiKey);
 
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(10000),
+    });
     if (!res.ok) throw new Error(`TCMB EVDS HTTP ${res.status}`);
     const data = (await res.json()) as EvdsResponse;
     const items = (data.items ?? []).filter((row) => {
@@ -108,7 +110,9 @@ export class TcmbEvdsInflationProvider implements InflationDataProvider {
     url.searchParams.set("frequency", "5"); // aylık
     url.searchParams.set("key", this.apiKey);
 
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(10000),
+    });
     if (!res.ok) throw new Error(`TCMB EVDS HTTP ${res.status}`);
     const data = (await res.json()) as EvdsResponse;
 

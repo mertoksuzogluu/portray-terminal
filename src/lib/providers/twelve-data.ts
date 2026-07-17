@@ -106,6 +106,7 @@ export class TwelveDataProvider implements MarketDataProvider {
 
       const res = await fetch(url.toString(), {
         next: { revalidate: 0 },
+        signal: AbortSignal.timeout(8000),
       });
       if (res.status === 429) {
         throw Object.assign(new Error("Rate limit"), { status: 429 });
@@ -187,7 +188,9 @@ export class TwelveDataProvider implements MarketDataProvider {
       url.searchParams.set("apikey", this.apiKey!);
       url.searchParams.set("timezone", "Europe/Istanbul");
 
-      const res = await fetch(url.toString());
+      const res = await fetch(url.toString(), {
+        signal: AbortSignal.timeout(10000),
+      });
       if (res.status === 429) {
         throw Object.assign(new Error("Rate limit"), { status: 429 });
       }

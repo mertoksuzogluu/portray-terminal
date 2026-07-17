@@ -15,17 +15,39 @@ export async function POST() {
   try {
     const user = await requireUser();
 
-    const market = await syncMarketData({ force: true });
+    const portfolios = await prisma.portfolio.findMany({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+
+    // 1) Önce mevcut fiyatlarla snapshot üret ki panel hemen dolsun.
+    for (const p of portfolios) {
+      await createDailySnapshot(p.id);
+    }
+
+    // 2) Canlı fiyatları çek (fetch'lerde timeout var; takılmaz).
+    let market: Awaited<ReturnType<typeof syncMarketData>> = {
+      processed: 0,
+      errors: [],
+      status: "SUCCESS",
+    };
+    try {
+      market = await syncMarketData({ force: true });
+    } catch (err) {
+      market = {
+        processed: 0,
+        status: "FAILED",
+        errors: [err instanceof Error ? err.message : "Senkron hatası"],
+      };
+    }
+
     try {
       await syncInflationData();
     } catch {
       // enflasyon opsiyonel — fiyat güncellemesini bloklamasın
     }
 
-    const portfolios = await prisma.portfolio.findMany({
-      where: { userId: user.id },
-      select: { id: true },
-    });
+    // 3) Güncel fiyatlarla snapshot'ı tazele.
     for (const p of portfolios) {
       await createDailySnapshot(p.id);
     }

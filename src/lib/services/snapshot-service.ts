@@ -14,6 +14,7 @@ import {
 } from "@/lib/calculations/inflation";
 import { startOfDay } from "@/lib/utils/dates";
 import { Prisma } from "@prisma/client";
+import type { Transaction } from "@prisma/client";
 
 function dec(value: Decimal): Prisma.Decimal {
   return new Prisma.Decimal(value.toFixed(8));
@@ -45,66 +46,42 @@ async function getLatestPriceMap(
   return map;
 }
 
-async function getExternalCashFlow(
-  portfolioId: string,
-  date: Date
-): Promise<Decimal> {
-  const day = startOfDay(date);
-  const next = new Date(day);
-  next.setDate(next.getDate() + 1);
+/**
+ * Belirtilen tarihe kadarki toplam dış katkı (yatırılan para):
+ *   açık nakit giriş/çıkışları + (nakit negatife düştüyse) varlık alımlarını
+ *   fonlamak için dışarıdan getirilen tutar (shortfall).
+ *
+ * Böylece kullanıcı ayrı "nakit yatırma" işlemi girmeden yalnızca alış
+ * kaydetse bile yatırdığı para doğru hesaplanır ve nakit negatife düşmez.
+ */
+function netContribAsOf(allTx: Transaction[], upTo: Date): Decimal {
+  const upToDay = startOfDay(upTo).getTime();
+  const filtered = allTx.filter(
+    (t) => startOfDay(t.transactionDate).getTime() <= upToDay
+  );
 
-  const txs = await prisma.transaction.findMany({
-    where: {
-      portfolioId,
-      transactionDate: { gte: day, lt: next },
-      transactionType: {
-        in: ["CASH_DEPOSIT", "CASH_WITHDRAWAL", "TRANSFER_IN", "TRANSFER_OUT"],
-      },
-    },
-  });
-
-  let flow = d(0);
-  for (const tx of txs) {
-    // Sadece nakit / varlık transferleri dış akış; hisse transferi ayrı
+  let explicit = d(0);
+  for (const tx of filtered) {
     if (tx.assetId) continue;
-    const amount = d(tx.grossAmount.toString()).times(d(tx.fxRateToBase.toString()));
-    const signed =
-      tx.transactionType === "CASH_DEPOSIT" || tx.transactionType === "TRANSFER_IN"
-        ? amount
-        : amount.neg();
-    flow = flow.plus(signed);
-  }
-  return flow;
-}
-
-async function getNetContributions(
-  portfolioId: string,
-  asOf: Date
-): Promise<Decimal> {
-  const txs = await prisma.transaction.findMany({
-    where: {
-      portfolioId,
-      transactionDate: { lte: asOf },
-      transactionType: {
-        in: ["CASH_DEPOSIT", "CASH_WITHDRAWAL", "TRANSFER_IN", "TRANSFER_OUT"],
-      },
-      assetId: null,
-    },
-  });
-
-  let net = d(0);
-  for (const tx of txs) {
-    const amount = d(tx.grossAmount.toString()).times(d(tx.fxRateToBase.toString()));
+    const amount = d(tx.grossAmount.toString()).times(
+      d(tx.fxRateToBase.toString())
+    );
     if (
       tx.transactionType === "CASH_DEPOSIT" ||
       tx.transactionType === "TRANSFER_IN"
     ) {
-      net = net.plus(amount);
-    } else {
-      net = net.minus(amount);
+      explicit = explicit.plus(amount);
+    } else if (
+      tx.transactionType === "CASH_WITHDRAWAL" ||
+      tx.transactionType === "TRANSFER_OUT"
+    ) {
+      explicit = explicit.minus(amount);
     }
   }
-  return net;
+
+  const cash = computeCashBalance(filtered);
+  const shortfall = cash.isNegative() ? cash.neg() : d(0);
+  return explicit.plus(shortfall);
 }
 
 async function loadInflationSeries(): Promise<InflationPoint[]> {
@@ -182,10 +159,13 @@ export async function createDailySnapshot(
     });
   }
 
-  const cashValue = computeCashBalance(allTx);
+  const rawCash = computeCashBalance(allTx);
+  // Nakit negatifse (kullanıcı nakit yatırmadan varlık aldıysa) bu tutar
+  // aslında dışarıdan getirilen katkıdır: nakiti sıfırda tabanla, eksiği
+  // netContributions'a ekle. Böylece toplam değer = varlıklar + nakit.
+  const cashValue = rawCash.isNegative() ? d(0) : rawCash;
   const totalMarketValue = investedMarketValue.plus(cashValue);
-  const netContributions = await getNetContributions(portfolioId, asOf);
-  const externalCashFlow = await getExternalCashFlow(portfolioId, asOf);
+  const netContributions = netContribAsOf(allTx, asOf);
 
   for (const row of positionRows) {
     row.weight = totalMarketValue.isZero()
@@ -204,6 +184,12 @@ export async function createDailySnapshot(
   const beginValue = previous
     ? d(previous.totalMarketValue.toString())
     : d(0);
+
+  // Günlük dış akış = kümülatif katkının bir önceki güne göre değişimi
+  // (açık nakit hareketleri + o gün alımları fonlamak için gelen para).
+  const externalCashFlow = previous
+    ? netContributions.minus(netContribAsOf(allTx, previous.snapshotDate))
+    : netContributions;
 
   const factor = dailyTwrFactor(beginValue, totalMarketValue, externalCashFlow);
   const dailyReturn = dailyReturnFromFactor(factor);
@@ -227,21 +213,20 @@ export async function createDailySnapshot(
     : cumulativeProfitLoss.div(netContributions);
 
   // Reel getiri
-  const contribTx = allTx.filter(
-    (t) =>
-      !t.assetId &&
-      ["CASH_DEPOSIT", "CASH_WITHDRAWAL", "TRANSFER_IN", "TRANSFER_OUT"].includes(
-        t.transactionType
-      )
-  );
-  const cashFlows = contribTx.map((t) => {
-    const amount = d(t.grossAmount.toString()).times(d(t.fxRateToBase.toString()));
-    const signed =
-      t.transactionType === "CASH_DEPOSIT" || t.transactionType === "TRANSFER_IN"
-        ? amount
-        : amount.neg();
-    return { date: t.transactionDate, amount: signed };
-  });
+  // Reel getiri için tarihli katkı akışları: her işlem gününde kümülatif
+  // katkının (açık nakit + alım fonlaması) değişimini alırız.
+  const txDayTimes = [
+    ...new Set(allTx.map((t) => startOfDay(t.transactionDate).getTime())),
+  ].sort((a, b) => a - b);
+  let prevCumContrib = d(0);
+  const cashFlows: Array<{ date: Date; amount: Decimal }> = [];
+  for (const time of txDayTimes) {
+    const dte = new Date(time);
+    const cum = netContribAsOf(allTx, dte);
+    const delta = cum.minus(prevCumContrib);
+    if (!delta.isZero()) cashFlows.push({ date: dte, amount: delta });
+    prevCumContrib = cum;
+  }
 
   const inflationSeries = await loadInflationSeries();
   const real = calculateRealReturn({
