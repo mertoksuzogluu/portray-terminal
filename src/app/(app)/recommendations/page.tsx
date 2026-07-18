@@ -67,6 +67,7 @@ export default function RecommendationsPage() {
 
   const load = useCallback(() => {
     setLoading(true);
+    setError(null);
     clientFetch<RecoData>("/api/recommendations")
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : "Hata"))
@@ -79,6 +80,7 @@ export default function RecommendationsPage() {
 
   async function refresh() {
     setRefreshing(true);
+    setError(null);
     try {
       const res = await clientFetch<RecoData>("/api/recommendations", {
         method: "POST",
@@ -121,6 +123,9 @@ export default function RecommendationsPage() {
 
   const classWeights = data.inputSummary?.classWeights ?? {};
   const targetWeights = data.inputSummary?.targetWeights ?? {};
+  const riskBand = data.riskBand ?? { target: 45, min: 30, max: 60 };
+  const items = data.items ?? [];
+  const marketNotes = data.marketNotes ?? [];
 
   return (
     <div className="space-y-6">
@@ -128,7 +133,7 @@ export default function RecommendationsPage() {
         <div>
           <h1 className="font-display text-2xl tracking-tight">Risk–Getiri Önerileri</h1>
           <p className="text-sm text-muted-foreground">
-            Profil: {data.riskProfileLabel}
+            Profil: {data.riskProfileLabel ?? data.userRiskProfile ?? "—"}
             {data.asOf ? ` · Son koşu: ${data.asOf}` : " · Henüz koşu yok"}
           </p>
         </div>
@@ -139,7 +144,7 @@ export default function RecommendationsPage() {
           >
             Risk profili
           </Link>
-          <Button onClick={refresh} disabled={refreshing}>
+          <Button type="button" onClick={refresh} disabled={refreshing}>
             <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             Yeniden hesapla
           </Button>
@@ -159,7 +164,7 @@ export default function RecommendationsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
-            Hedef bant: {data.riskBand.min}–{data.riskBand.max} (hedef {data.riskBand.target})
+            Hedef bant: {riskBand.min}–{riskBand.max} (hedef {riskBand.target})
           </CardContent>
         </Card>
         <Card className="md:col-span-2">
@@ -191,7 +196,7 @@ export default function RecommendationsPage() {
       </div>
 
       <div className="space-y-3">
-        {data.items.length === 0 ? (
+        {items.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center py-12 text-center">
               <Lightbulb className="mb-3 h-8 w-8 text-muted-foreground" />
@@ -202,7 +207,7 @@ export default function RecommendationsPage() {
             </CardContent>
           </Card>
         ) : (
-          data.items.map((item) => (
+          items.map((item) => (
             <Card key={item.id}>
               <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
                 <div>
@@ -210,7 +215,7 @@ export default function RecommendationsPage() {
                     <Badge variant="secondary">{ACTION_LABEL[item.action] ?? item.action}</Badge>
                     <Badge variant="outline">{CLASS_LABEL[item.assetClass] ?? item.assetClass}</Badge>
                     {item.symbol && <Badge variant="outline">{item.symbol}</Badge>}
-                    <Badge>Skor {item.score.toFixed(0)}</Badge>
+                    <Badge>Skor {Number(item.score ?? 0).toFixed(0)}</Badge>
                   </div>
                   <CardTitle className="text-base">{item.title}</CardTitle>
                   <CardDescription className="mt-1">{item.message}</CardDescription>
@@ -224,10 +229,15 @@ export default function RecommendationsPage() {
                 </p>
                 {item.action !== "HOLD" && (
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => updateStatus(item.id, "DISMISSED")}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => updateStatus(item.id, "DISMISSED")}
+                    >
                       Reddet
                     </Button>
-                    <Button size="sm" onClick={() => updateStatus(item.id, "APPLIED")}>
+                    <Button type="button" size="sm" onClick={() => updateStatus(item.id, "APPLIED")}>
                       Uyguladım
                     </Button>
                   </div>
@@ -238,14 +248,14 @@ export default function RecommendationsPage() {
         )}
       </div>
 
-      {data.marketNotes.length > 0 && (
+      {marketNotes.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Ortak piyasa notları</CardTitle>
             <CardDescription>Yakın çevre için yönetici notları</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {data.marketNotes.map((n) => (
+            {marketNotes.map((n) => (
               <div key={n.id} className="rounded-md border border-border p-3">
                 <p className="font-medium">{n.title}</p>
                 <p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{n.body}</p>
