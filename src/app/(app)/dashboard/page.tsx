@@ -4,7 +4,13 @@ import { Suspense } from "react";
 import { AllocationChart } from "@/components/charts/allocation-chart";
 import { PortfolioValueChart } from "@/components/charts/portfolio-value-chart";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton";
 import { PnlValue } from "@/components/shared/pnl-value";
 import { RefreshPricesButton } from "@/components/shared/refresh-prices-button";
@@ -29,6 +35,11 @@ interface DashboardData {
   alerts: { id: string; message: string; triggeredAt: string; ruleName: string; isRead: boolean }[];
   winners: { assetId: string; symbol: string; name: string; pnl: number; returnPct: number | null }[];
   losers: { assetId: string; symbol: string; name: string; pnl: number; returnPct: number | null }[];
+  recommendations?: {
+    riskProfile: string;
+    riskScore: number | null;
+    items: { id: string; action: string; title: string; score: number; suggestedDelta: number }[];
+  };
 }
 
 async function DashboardContent() {
@@ -129,6 +140,46 @@ async function DashboardContent() {
               </CardContent>
             </Card>
           </div>
+
+          {data.recommendations && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <div>
+                  <CardTitle>Öneriler</CardTitle>
+                  <CardDescription>
+                    Risk skoru{" "}
+                    {data.recommendations.riskScore != null
+                      ? data.recommendations.riskScore.toFixed(0)
+                      : "—"}{" "}
+                    · {data.recommendations.riskProfile}
+                  </CardDescription>
+                </div>
+                <Link href="/recommendations" className="text-xs text-primary hover:underline">
+                  Tümü →
+                </Link>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {data.recommendations.items.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Aktif öneri yok.{" "}
+                    <Link href="/recommendations" className="text-primary hover:underline">
+                      Hesapla
+                    </Link>
+                  </p>
+                ) : (
+                  data.recommendations.items.map((r) => (
+                    <div key={r.id} className="border-b border-border pb-2 last:border-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium">{r.title}</p>
+                        <Badge variant="secondary">Skor {r.score.toFixed(0)}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{r.action}</p>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <div className="grid gap-4 lg:grid-cols-3">
             <Card>

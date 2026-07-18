@@ -21,6 +21,8 @@ export interface SessionUser {
   baseCurrency: string;
   timezone: string;
   riskFreeRateAnnual: string;
+  role: "ADMIN" | "MEMBER";
+  riskProfile: "CONSERVATIVE" | "BALANCED" | "GROWTH" | "AGGRESSIVE";
   isDemo: boolean;
 }
 
@@ -89,6 +91,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       baseCurrency: user.baseCurrency,
       timezone: user.timezone,
       riskFreeRateAnnual: user.riskFreeRateAnnual.toString(),
+      role: user.role,
+      riskProfile: user.riskProfile,
       isDemo: user.isDemo,
     };
   } catch {
@@ -140,6 +144,8 @@ export async function loginWithPassword(
     baseCurrency: user.baseCurrency,
     timezone: user.timezone,
     riskFreeRateAnnual: user.riskFreeRateAnnual.toString(),
+    role: user.role,
+    riskProfile: user.riskProfile,
     isDemo: user.isDemo,
   };
 }
@@ -162,6 +168,8 @@ export async function registerUser(input: {
       email: input.email.toLowerCase(),
       name: input.name ?? null,
       passwordHash,
+      role: "MEMBER",
+      riskProfile: "BALANCED",
       baseCurrency: "TRY",
       timezone: "Europe/Istanbul",
       portfolios: {
@@ -190,8 +198,18 @@ export async function registerUser(input: {
     baseCurrency: user.baseCurrency,
     timezone: user.timezone,
     riskFreeRateAnnual: user.riskFreeRateAnnual.toString(),
+    role: user.role,
+    riskProfile: user.riskProfile,
     isDemo: user.isDemo,
   };
+}
+
+export async function requireAdmin(): Promise<SessionUser> {
+  const user = await requireUser();
+  if (user.role !== "ADMIN") {
+    throw new ForbiddenError("Bu işlem için yönetici yetkisi gerekir.");
+  }
+  return user;
 }
 
 export async function assertPortfolioOwnership(

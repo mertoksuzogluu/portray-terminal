@@ -20,6 +20,8 @@ export async function GET() {
         baseCurrency: user.baseCurrency,
         timezone: user.timezone,
         riskFreeRateAnnual: Number(user.riskFreeRateAnnual),
+        role: user.role,
+        riskProfile: user.riskProfile,
         isDemo: user.isDemo,
       },
       portfolio: portfolio
@@ -52,6 +54,9 @@ export async function PATCH(req: NextRequest) {
     if (body.riskFreeRateAnnual !== undefined) {
       data.riskFreeRateAnnual = Number(body.riskFreeRateAnnual);
     }
+    if (body.riskProfile !== undefined) {
+      data.riskProfile = String(body.riskProfile);
+    }
 
     const updated = await prisma.user.update({
       where: { id: user.id },
@@ -66,6 +71,8 @@ export async function PATCH(req: NextRequest) {
         baseCurrency: updated.baseCurrency,
         timezone: updated.timezone,
         riskFreeRateAnnual: Number(updated.riskFreeRateAnnual.toString()),
+        role: updated.role,
+        riskProfile: updated.riskProfile,
         isDemo: updated.isDemo,
       },
     });

@@ -10,6 +10,7 @@ import {
   FileText,
   GitCompare,
   LayoutDashboard,
+  Lightbulb,
   LineChart,
   Scale,
   Settings,
@@ -24,6 +25,7 @@ import type { SessionUser } from "@/lib/auth/session";
 const ICONS = {
   LayoutDashboard,
   Briefcase,
+  Lightbulb,
   ArrowLeftRight,
   Trophy,
   CandlestickChart,

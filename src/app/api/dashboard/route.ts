@@ -14,7 +14,8 @@ import { toDateKey } from "@/lib/utils/dates";
 export async function GET() {
   try {
     const { user, portfolioId } = await requirePortfolioContext();
-    const [latest, snapshots, positions, insights, alerts] = await Promise.all([
+    const [latest, snapshots, positions, insights, alerts, recommendations] =
+      await Promise.all([
       getLatestPortfolioSnapshot(portfolioId),
       getPortfolioSnapshots(portfolioId, 365),
       getLatestPositionSnapshots(portfolioId),
@@ -29,7 +30,17 @@ export async function GET() {
         take: 5,
         include: { alertRule: true },
       }),
+      prisma.recommendation.findMany({
+        where: { portfolioId, status: "ACTIVE" },
+        orderBy: { score: "desc" },
+        take: 3,
+      }),
     ]);
+
+    const latestRecoRun = await prisma.recommendationRun.findFirst({
+      where: { portfolioId },
+      orderBy: { runDate: "desc" },
+    });
 
     const chartData = snapshots.map((s) => ({
       date: toDateKey(s.snapshotDate),
@@ -147,6 +158,19 @@ export async function GET() {
         date: toDateKey(s.snapshotDate),
         value: normalized[i]?.toNumber() ?? 100,
       })),
+      recommendations: {
+        riskProfile: user.riskProfile,
+        riskScore: latestRecoRun?.riskScore
+          ? Number(latestRecoRun.riskScore.toString())
+          : null,
+        items: recommendations.map((r) => ({
+          id: r.id,
+          action: r.action,
+          title: r.title,
+          score: Number(r.score.toString()),
+          suggestedDelta: Number(r.suggestedDelta.toString()),
+        })),
+      },
     });
   } catch (error) {
     return jsonError(error);

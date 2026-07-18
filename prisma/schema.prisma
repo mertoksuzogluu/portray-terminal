@@ -120,20 +120,58 @@ enum RealizedGainMethod {
   FIFO
 }
 
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+enum RiskProfile {
+  CONSERVATIVE
+  BALANCED
+  GROWTH
+  AGGRESSIVE
+}
+
+enum AssetClass {
+  EQUITY
+  FUND
+  FX
+  GOLD
+  CASH
+}
+
+enum RecommendationAction {
+  INCREASE
+  DECREASE
+  HOLD
+  SHIFT_CLASS
+  PARK_CASH
+}
+
+enum RecommendationStatus {
+  ACTIVE
+  APPLIED
+  DISMISSED
+  EXPIRED
+}
+
 model User {
-  id                   String     @id @default(cuid())
-  email                String     @unique
+  id                   String      @id @default(cuid())
+  email                String      @unique
   name                 String?
   passwordHash         String?
-  baseCurrency         String     @default("TRY")
-  timezone             String     @default("Europe/Istanbul")
-  riskFreeRateAnnual   Decimal    @default(0.45) @db.Decimal(12, 8)
+  baseCurrency         String      @default("TRY")
+  timezone             String      @default("Europe/Istanbul")
+  riskFreeRateAnnual   Decimal     @default(0.45) @db.Decimal(12, 8)
   preferredBenchmarkId String?
-  isDemo               Boolean    @default(false)
-  createdAt            DateTime   @default(now())
-  updatedAt            DateTime   @updatedAt
+  role                 UserRole    @default(MEMBER)
+  riskProfile          RiskProfile @default(BALANCED)
+  isDemo               Boolean     @default(false)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
   portfolios           Portfolio[]
   sessions             Session[]
+  marketNotes          MarketNote[]
 
   @@map("users")
 }
@@ -168,6 +206,8 @@ model Portfolio {
   alertRules            AlertRule[]
   analysisInsights      AnalysisInsight[]
   reports               PortfolioReport[]
+  recommendationRuns    RecommendationRun[]
+  recommendations       Recommendation[]
 
   @@index([userId])
   @@map("portfolios")
@@ -487,4 +527,77 @@ model AppSetting {
 
   @@unique([userId, key])
   @@map("app_settings")
+}
+
+model TargetAllocation {
+  id          String       @id @default(cuid())
+  riskProfile RiskProfile
+  assetClass  AssetClass
+  weight      Decimal      @db.Decimal(12, 8)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([riskProfile, assetClass])
+  @@index([riskProfile])
+  @@map("target_allocations")
+}
+
+model RecommendationRun {
+  id                String           @id @default(cuid())
+  portfolioId       String
+  runDate           DateTime         @db.Date
+  algorithmVersion  String           @default("v1")
+  riskProfile       RiskProfile
+  riskScore         Decimal?         @db.Decimal(12, 4)
+  inputSummary      Json?
+  createdAt         DateTime         @default(now())
+  portfolio         Portfolio        @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  recommendations   Recommendation[]
+
+  @@unique([portfolioId, runDate, algorithmVersion])
+  @@index([portfolioId, runDate])
+  @@map("recommendation_runs")
+}
+
+model Recommendation {
+  id              String               @id @default(cuid())
+  portfolioId     String
+  runId           String
+  action          RecommendationAction
+  assetClass      AssetClass
+  assetId         String?
+  symbol          String?
+  title           String
+  message         String
+  currentWeight   Decimal              @db.Decimal(12, 8)
+  targetWeight    Decimal              @db.Decimal(12, 8)
+  suggestedDelta  Decimal              @db.Decimal(12, 8)
+  score           Decimal              @db.Decimal(12, 4)
+  rationale       Json?
+  status          RecommendationStatus @default(ACTIVE)
+  validUntil      DateTime             @db.Date
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  portfolio       Portfolio            @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  run             RecommendationRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId, status])
+  @@index([runId])
+  @@index([validUntil])
+  @@map("recommendations")
+}
+
+model MarketNote {
+  id          String   @id @default(cuid())
+  authorId    String
+  title       String
+  body        String
+  publishedAt DateTime @default(now())
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([isActive, publishedAt])
+  @@map("market_notes")
 }

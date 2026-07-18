@@ -188,6 +188,8 @@ async function seedDemoUser(): Promise<{
       name: "Demo Yatırımcı",
       passwordHash,
       isDemo: true,
+      role: "ADMIN",
+      riskProfile: "BALANCED",
       baseCurrency: "TRY",
       timezone: "Europe/Istanbul",
       riskFreeRateAnnual: dec(0.45),
@@ -699,6 +701,34 @@ async function seedInsights(portfolioId: string, asOf: Date): Promise<void> {
   }
 }
 
+const DEFAULT_TARGETS: Record<string, Record<string, number>> = {
+  CONSERVATIVE: { EQUITY: 0.15, FUND: 0.4, GOLD: 0.15, FX: 0.1, CASH: 0.2 },
+  BALANCED: { EQUITY: 0.35, FUND: 0.3, GOLD: 0.15, FX: 0.1, CASH: 0.1 },
+  GROWTH: { EQUITY: 0.5, FUND: 0.25, GOLD: 0.1, FX: 0.1, CASH: 0.05 },
+  AGGRESSIVE: { EQUITY: 0.7, FUND: 0.15, GOLD: 0.05, FX: 0.05, CASH: 0.05 },
+};
+
+async function seedTargetAllocations(): Promise<void> {
+  for (const [profile, weights] of Object.entries(DEFAULT_TARGETS)) {
+    for (const [assetClass, weight] of Object.entries(weights)) {
+      await prisma.targetAllocation.upsert({
+        where: {
+          riskProfile_assetClass: {
+            riskProfile: profile as "BALANCED",
+            assetClass: assetClass as "EQUITY",
+          },
+        },
+        create: {
+          riskProfile: profile as "BALANCED",
+          assetClass: assetClass as "EQUITY",
+          weight: dec(weight),
+        },
+        update: { weight: dec(weight) },
+      });
+    }
+  }
+}
+
 async function main(): Promise<void> {
   console.log(`${DEMO_MARKER} Demo seed başlıyor...`);
 
@@ -707,6 +737,7 @@ async function main(): Promise<void> {
   const days = eachDay(startDate, today);
 
   await clearDemoUser();
+  await seedTargetAllocations();
   const assetIds = await upsertAssets();
   const benchmarkIds = await upsertBenchmarks();
   const { portfolioId, accountId } = await seedDemoUser();
@@ -734,6 +765,15 @@ async function main(): Promise<void> {
   await seedSnapshots(portfolioId, assetIds, days, txSeeds);
   await seedAlertRules(portfolioId, assetIds);
   await seedInsights(portfolioId, today);
+
+  // Öneri motoru demo çıktısı (dinamik import — prisma client generate sonrası)
+  try {
+    const { runRecommendationEngine } = await import("../src/lib/recommendations/service");
+    const reco = await runRecommendationEngine(portfolioId, today);
+    console.log(`${DEMO_MARKER} Öneri motoru: ${reco.created} öneri (risk skoru ${reco.riskScore.toFixed(1)})`);
+  } catch (err) {
+    console.warn(`${DEMO_MARKER} Öneri motoru seed atlandı:`, err);
+  }
 
   console.log(`${DEMO_MARKER} Demo seed tamamlandı.`);
   console.log(`  E-posta : ${DEMO_EMAIL}`);

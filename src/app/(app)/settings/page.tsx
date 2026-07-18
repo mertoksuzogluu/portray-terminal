@@ -4,11 +4,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { LogOut, Settings } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { Select, SelectItem } from "@/components/ui/select";
 import { ErrorState } from "@/components/shared/error-state";
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton";
 import { clientFetch } from "@/lib/api/client-fetch";
@@ -22,6 +23,8 @@ interface SettingsData {
     baseCurrency: string;
     timezone: string;
     riskFreeRateAnnual: number;
+    role?: string;
+    riskProfile?: string;
     isDemo: boolean;
   };
   portfolio: {
@@ -44,6 +47,7 @@ export default function SettingsPage() {
     baseCurrency: "TRY",
     timezone: "Europe/Istanbul",
     riskFreeRateAnnual: "45",
+    riskProfile: "BALANCED",
   });
 
   useEffect(() => {
@@ -55,6 +59,7 @@ export default function SettingsPage() {
           baseCurrency: res.user.baseCurrency,
           timezone: res.user.timezone,
           riskFreeRateAnnual: String(res.user.riskFreeRateAnnual * 100),
+          riskProfile: res.user.riskProfile ?? "BALANCED",
         });
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Hata"))
@@ -72,6 +77,7 @@ export default function SettingsPage() {
           baseCurrency: form.baseCurrency,
           timezone: form.timezone,
           riskFreeRateAnnual: Number(form.riskFreeRateAnnual) / 100,
+          riskProfile: form.riskProfile,
         }),
       });
       setData((d) => (d ? { ...d, user: updated.user } : d));
@@ -163,12 +169,48 @@ export default function SettingsPage() {
                 onChange={(e) => setForm({ ...form, timezone: e.target.value })}
               />
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="riskProfile">Risk Profili</Label>
+              <Select
+                id="riskProfile"
+                value={form.riskProfile}
+                onChange={(e) => setForm({ ...form, riskProfile: e.target.value })}
+              >
+                <SelectItem value="CONSERVATIVE">Muhafazakâr</SelectItem>
+                <SelectItem value="BALANCED">Dengeli</SelectItem>
+                <SelectItem value="GROWTH">Büyüme</SelectItem>
+                <SelectItem value="AGGRESSIVE">Agresif</SelectItem>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Öneri motoru hedef varlık dağılımını bu profile göre dönüştürür.{" "}
+                <Link href="/recommendations" className="text-primary hover:underline">
+                  Önerilere git
+                </Link>
+              </p>
+            </div>
             <Button type="submit" disabled={saving}>
               {saving ? "Kaydediliyor…" : "Kaydet"}
             </Button>
           </form>
         </CardContent>
       </Card>
+
+      {data.user.role === "ADMIN" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Yönetici</CardTitle>
+            <CardDescription>Hedef dağılımlar ve piyasa notları</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link
+              href="/admin/targets"
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              Hedef dağılım & piyasa notu yönetimi →
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {data.portfolio && (
         <Card>

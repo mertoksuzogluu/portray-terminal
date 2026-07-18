@@ -21,6 +21,8 @@ export async function POST() {
           name: "Demo Yatırımcı",
           passwordHash,
           isDemo: true,
+          role: "ADMIN",
+          riskProfile: "BALANCED",
           baseCurrency: "TRY",
           timezone: "Europe/Istanbul",
           portfolios: {
@@ -52,6 +54,8 @@ export async function POST() {
         baseCurrency: user.baseCurrency,
         timezone: user.timezone,
         riskFreeRateAnnual: user.riskFreeRateAnnual.toString(),
+        role: user.role,
+        riskProfile: user.riskProfile,
         isDemo: user.isDemo,
       },
     });

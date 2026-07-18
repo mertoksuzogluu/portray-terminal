@@ -48,11 +48,30 @@ export async function generatePortfolioReports(
       orderBy: { snapshotDate: "desc" },
     });
 
+    const activeRecos = await prisma.recommendation.findMany({
+      where: { portfolioId: portfolio.id, status: "ACTIVE" },
+      orderBy: { score: "desc" },
+      take: 5,
+    });
+    const latestRecoRun = await prisma.recommendationRun.findFirst({
+      where: { portfolioId: portfolio.id },
+      orderBy: { runDate: "desc" },
+    });
+
+    const recoSummary =
+      activeRecos.length > 0
+        ? ` Aktif öneri: ${activeRecos.length}${
+            latestRecoRun?.riskScore != null
+              ? ` (risk skoru ${Number(latestRecoRun.riskScore.toString()).toFixed(0)})`
+              : ""
+          }.`
+        : "";
+
     const summary = latestSnapshot
       ? `Portföy değeri ${latestSnapshot.totalMarketValue.toString()} TRY. Son 30 gün TWR: ${
           performance?.periods.last30d?.twrReturn?.toFixed(4) ?? "—"
-        }`
-      : "Henüz snapshot verisi yok.";
+        }.${recoSummary}`
+      : `Henüz snapshot verisi yok.${recoSummary}`;
 
     const title = `${portfolio.name} — Günlük Rapor (${toDateKey(snapshotDate)})`;
     const content = {
@@ -78,6 +97,20 @@ export async function generatePortfolioReports(
         message: i.message,
       })),
       alerts: alertResult.events,
+      recommendations: {
+        riskScore: latestRecoRun?.riskScore
+          ? Number(latestRecoRun.riskScore.toString())
+          : null,
+        riskProfile: latestRecoRun?.riskProfile ?? null,
+        items: activeRecos.map((r) => ({
+          action: r.action,
+          assetClass: r.assetClass,
+          title: r.title,
+          message: r.message,
+          score: Number(r.score.toString()),
+          suggestedDelta: Number(r.suggestedDelta.toString()),
+        })),
+      },
     };
 
     const existing = await prisma.portfolioReport.findUnique({
