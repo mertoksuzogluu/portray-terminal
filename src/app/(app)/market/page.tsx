@@ -39,6 +39,7 @@ interface AssetOpportunity {
   volBucket: "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN";
   signal: OpportunitySignal;
   title: string;
+  idea?: string;
   message: string;
   severity: "INFO" | "POSITIVE" | "WARNING";
 }
@@ -93,10 +94,19 @@ function RangeBar({ position }: { position: number | null }) {
 }
 
 function OpportunityRow({ o }: { o: AssetOpportunity }) {
+  const hasBand = o.rangePosition != null && o.low2y > 0 && o.high2y > 0;
+  const idea = o.idea ?? o.title;
+  const detail =
+    o.idea && o.message.startsWith(o.idea)
+      ? o.message.slice(o.idea.length).trim()
+      : o.message !== idea
+        ? o.message
+        : "";
+
   return (
     <div className="space-y-2 border-b border-border/60 py-4 last:border-0">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{o.symbol}</span>
             {signalBadge(o.signal, o.lookbackLabel)}
@@ -120,26 +130,38 @@ function OpportunityRow({ o }: { o: AssetOpportunity }) {
           <p className="text-sm text-muted-foreground">{o.name}</p>
         </div>
         <div className="text-right text-sm tabular-nums">
-          <div>{formatNumber(o.currentPrice, 2)}</div>
+          <div>
+            {o.currentPrice > 0 ? formatNumber(o.currentPrice, 2) : "—"}
+          </div>
           <div className="text-xs text-muted-foreground">
-            {o.lookbackDays || o.observationCount} gün
+            {o.observationCount > 0
+              ? `${o.lookbackDays || o.observationCount} gün seri`
+              : "seri yok"}
           </div>
         </div>
       </div>
 
-      <RangeBar position={o.rangePosition} />
-      <div className="flex justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
-        <span>Dip {formatNumber(o.low2y, 2)}</span>
-        <span>
-          Bant{" "}
-          {o.rangePosition == null
-            ? "—"
-            : `%${(o.rangePosition * 100).toFixed(0)}`}
-        </span>
-        <span>Zirve {formatNumber(o.high2y, 2)}</span>
-      </div>
+      <p className="text-sm font-medium leading-snug text-foreground">{idea}</p>
 
-      <p className="text-sm leading-relaxed text-muted-foreground">{o.message}</p>
+      {hasBand ? (
+        <>
+          <RangeBar position={o.rangePosition} />
+          <div className="flex justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span>Dip {formatNumber(o.low2y, 2)}</span>
+            <span>Bant %{((o.rangePosition ?? 0) * 100).toFixed(0)}</span>
+            <span>Zirve {formatNumber(o.high2y, 2)}</span>
+          </div>
+        </>
+      ) : (
+        <div className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          Bant grafiği için fiyat geçmişi tamamlanıyor. Üstteki «Geçmişi doldur &
+          yenile» ile tekrar deneyin.
+        </div>
+      )}
+
+      {detail ? (
+        <p className="text-sm leading-relaxed text-muted-foreground">{detail}</p>
+      ) : null}
 
       <div className="flex flex-wrap gap-3 text-xs tabular-nums text-muted-foreground">
         <span>
@@ -193,6 +215,9 @@ export default function MarketPage() {
     return (
       <div className="space-y-4">
         <h1 className="font-display text-2xl">Piyasa Bağlamı</h1>
+        <p className="text-sm text-muted-foreground">
+          İzleme listesi ve portföy bağlamı yükleniyor…
+        </p>
         <LoadingSkeleton />
       </div>
     );
@@ -303,12 +328,16 @@ export default function MarketPage() {
           <CardHeader>
             <CardTitle>Bu haftanın izleme listesi</CardTitle>
             <CardDescription>
-              Altın/döviz sabit; 6 hisse her Pazartesi döner ({data.weekKey})
+              Her hisse için kısa fikir + bant konumu. Altın/döviz sabit; 6 hisse
+              haftalık döner ({data.weekKey})
             </CardDescription>
           </CardHeader>
           <CardContent>
             {data.watchlistHighlights.length === 0 ? (
-              <p className="text-sm text-muted-foreground">İzleme varlığı yok.</p>
+              <p className="text-sm text-muted-foreground">
+                İzleme varlığı yok. Sayfayı yenileyin; geçmiş otomatik
+                doldurulur.
+              </p>
             ) : (
               data.watchlistHighlights.map((o) => (
                 <OpportunityRow key={o.assetId} o={o} />

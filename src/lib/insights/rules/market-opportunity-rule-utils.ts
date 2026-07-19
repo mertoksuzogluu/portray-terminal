@@ -67,6 +67,8 @@ export function lookbackTradingDays(
 }
 
 export function lookbackLabelFromDays(days: number): string {
+  if (days <= 15) return "~2 hf";
+  if (days <= 30) return "~1 ay";
   if (days <= 50) return "2 ay";
   if (days <= 75) return "3 ay";
   if (days <= 100) return "4 ay";
@@ -92,12 +94,13 @@ export function computeAdaptiveSeriesStats(
   fullCloses: number[],
   assetType: string
 ): SeriesWindowStats | null {
-  if (fullCloses.length < 20) return null;
+  // Kısa seride de bant/fikir üret (izleme listesi yeni dolduğunda boş kalmasın)
+  if (fullCloses.length < 10) return null;
 
   const realizedVol = realizedVolAnnual(fullCloses);
   const lookbackDays = lookbackTradingDays(realizedVol, assetType);
   const closes = fullCloses.slice(-Math.min(lookbackDays, fullCloses.length));
-  if (closes.length < 15) return null;
+  if (closes.length < 8) return null;
 
   const current = closes[closes.length - 1];
   const low = Math.min(...closes);
@@ -114,7 +117,8 @@ export function computeAdaptiveSeriesStats(
     drawdownFromHigh,
     realizedVol,
     lookbackDays: closes.length,
-    lookbackLabel: lookbackLabelFromDays(lookbackDays),
+    // Etiket gerçek kullanılan pencereye göre (kısa seride "6 ay" yanıltmasın)
+    lookbackLabel: lookbackLabelFromDays(closes.length),
     volBucket: volBucketFromVol(realizedVol),
   };
 }

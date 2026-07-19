@@ -15,6 +15,7 @@ import {
 import { ChartSkeleton } from "@/components/shared/loading-skeleton";
 import { PnlValue } from "@/components/shared/pnl-value";
 import { ApiError, serverFetch } from "@/lib/api/server-fetch";
+import { transactionTypeLabel } from "@/lib/constants/transaction-labels";
 import { formatDateTR, formatMoney, formatNumber, formatPercentPlain } from "@/lib/format/tr";
 
 interface AssetDetail {
@@ -129,8 +130,11 @@ async function AssetDetailContent({ assetId }: { assetId: string }) {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Son İşlemler</CardTitle>
+          <Link href="/transactions" className="text-xs text-primary hover:underline">
+            Düzenle / sil →
+          </Link>
         </CardHeader>
         <CardContent className="p-0">
           {transactions.length === 0 ? (
@@ -152,7 +156,7 @@ async function AssetDetailContent({ assetId }: { assetId: string }) {
                   <TableRow key={t.id}>
                     <TableCell>{formatDateTR(t.date)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{t.type}</Badge>
+                      <Badge variant="outline">{transactionTypeLabel(t.type)}</Badge>
                     </TableCell>
                     <TableCell>{formatNumber(t.quantity, 2)}</TableCell>
                     <TableCell>{formatMoney(t.unitPrice)}</TableCell>

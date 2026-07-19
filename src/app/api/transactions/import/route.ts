@@ -3,6 +3,7 @@ import Papa from "papaparse";
 import { prisma } from "@/lib/db/prisma";
 import { requirePortfolioContext } from "@/lib/api/portfolio-context";
 import { jsonError, jsonOk } from "@/lib/api/response";
+import { rebuildSnapshotsFrom } from "@/lib/services/snapshot-service";
 import { createHash } from "crypto";
 
 interface CsvRow {
@@ -39,6 +40,7 @@ export async function POST(req: NextRequest) {
 
     let imported = 0;
     let skipped = 0;
+    let earliestDate: Date | null = null;
 
     for (const row of parsed.data) {
       const symbol = (row.sembol ?? row.symbol ?? "").trim().toUpperCase();
@@ -80,25 +82,34 @@ export async function POST(req: NextRequest) {
             ? "DIVIDEND"
             : "BUY";
 
+      const transactionDate = new Date(dateStr);
       await prisma.transaction.create({
         data: {
           portfolioId,
           accountId,
           assetId: asset.id,
           transactionType: txType,
-          transactionDate: new Date(dateStr),
+          transactionDate,
           quantity: qty,
           unitPrice: price,
           grossAmount: qty * price,
           commission,
-          currency: "TRY",
+          currency: asset.currency ?? "TRY",
           importHash: hash,
         },
       });
       imported++;
+      if (!earliestDate || transactionDate.getTime() < earliestDate.getTime()) {
+        earliestDate = transactionDate;
+      }
     }
 
-    return jsonOk({ imported, skipped, total: parsed.data.length });
+    let snapshotsRebuilt = 0;
+    if (imported > 0 && earliestDate) {
+      snapshotsRebuilt = await rebuildSnapshotsFrom(portfolioId, earliestDate);
+    }
+
+    return jsonOk({ imported, skipped, total: parsed.data.length, snapshotsRebuilt });
   } catch (error) {
     return jsonError(error);
   }

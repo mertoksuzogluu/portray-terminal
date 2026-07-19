@@ -71,7 +71,15 @@ async function DashboardContent() {
               : "Henüz anlık görüntü yok"}
           </p>
         </div>
-        <RefreshPricesButton />
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/transactions"
+            className="inline-flex h-9 items-center rounded-md border border-border bg-card px-3 text-sm hover:bg-muted"
+          >
+            İşlem ekle
+          </Link>
+          <RefreshPricesButton />
+        </div>
       </div>
 
       {isEmpty ? (
@@ -79,18 +87,53 @@ async function DashboardContent() {
           <CardContent className="py-12 text-center">
             <p className="font-display text-lg">Portföyünüz boş</p>
             <p className="mt-2 text-sm text-muted-foreground">
-              İşlem ekleyerek veya demo hesapla giriş yaparak başlayın.
+              Hızlı alış ile fon veya hisse ekleyin. Yanlış kayıtları İşlemler’den düzenleyip
+              silebilirsiniz.
             </p>
-            <Link
-              href="/transactions"
-              className="mt-4 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"
-            >
-              İşlem ekle →
-            </Link>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/transactions"
+                className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                İşlem ekle
+              </Link>
+              <Link
+                href="/recommendations"
+                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Önerilere bak →
+              </Link>
+            </div>
           </CardContent>
         </Card>
       ) : (
         <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Link
+              href="/transactions"
+              className="rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted/40"
+            >
+              <p className="font-medium">Alış / satış ekle</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Yanlış işlemleri düzenle veya sil
+              </p>
+            </Link>
+            <Link
+              href="/recommendations"
+              className="rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted/40"
+            >
+              <p className="font-medium">Öneriler</p>
+              <p className="mt-1 text-xs text-muted-foreground">Risk–getiri dengeli fikirler</p>
+            </Link>
+            <Link
+              href="/portfolio"
+              className="rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted/40"
+            >
+              <p className="font-medium">Pozisyonlar</p>
+              <p className="mt-1 text-xs text-muted-foreground">Varlık bazında detay</p>
+            </Link>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard title="Toplam Değer" value={formatMoney(summary.totalValue, summary.currency)} />
             <KpiCard

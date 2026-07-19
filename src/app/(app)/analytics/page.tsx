@@ -85,6 +85,13 @@ export default function AnalyticsPage() {
         </p>
       </div>
 
+      {(data.performance.series.length < 10 || data.risk.insufficientData) && (
+        <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Portföy geçmişi henüz kısa. Grafikler ve risk metrikleri birkaç haftalık
+          veriyle daha anlamlı dolar — fiyat yenilemeyi sürdürün.
+        </p>
+      )}
+
       <Tabs defaultValue="performance">
         <TabsList className="flex-wrap">
           <TabsTrigger value="performance">Performans</TabsTrigger>

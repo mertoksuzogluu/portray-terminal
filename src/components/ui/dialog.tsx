@@ -36,7 +36,7 @@ export function Dialog({
         onClick={() => onOpenChange(false)}
         aria-hidden
       />
-      <div className="relative z-10 w-full max-w-lg">{children}</div>
+      <div className="relative z-10 w-full max-w-xl">{children}</div>
     </div>
   );
 }
@@ -53,7 +53,7 @@ export function DialogContent({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card p-6 shadow-md",
+        "relative rounded-lg border border-border bg-card p-6 shadow-md",
         className
       )}
       role="dialog"

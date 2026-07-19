@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { requirePortfolioContext } from "@/lib/api/portfolio-context";
 import { jsonError, jsonOk } from "@/lib/api/response";
+import { rebuildSnapshotsFrom } from "@/lib/services/snapshot-service";
 import { toDateKey } from "@/lib/utils/dates";
 
 export async function GET() {
@@ -105,6 +106,8 @@ export async function POST(req: NextRequest) {
       include: { asset: true, account: true },
     });
 
+    const rebuilt = await rebuildSnapshotsFrom(portfolioId, transactionDate);
+
     return jsonOk({
       transaction: {
         id: tx.id,
@@ -116,6 +119,7 @@ export async function POST(req: NextRequest) {
         unitPrice: Number(tx.unitPrice.toString()),
         grossAmount: Number(tx.grossAmount.toString()),
       },
+      snapshotsRebuilt: rebuilt,
     });
   } catch (error) {
     return jsonError(error);

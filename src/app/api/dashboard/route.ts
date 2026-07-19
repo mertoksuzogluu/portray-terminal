@@ -9,11 +9,27 @@ import {
   requirePortfolioContext,
 } from "@/lib/api/portfolio-context";
 import { jsonError, jsonOk } from "@/lib/api/response";
-import { toDateKey } from "@/lib/utils/dates";
+import { startOfDay, toDateKey } from "@/lib/utils/dates";
+import { createDailySnapshot } from "@/lib/services/snapshot-service";
 
 export async function GET() {
   try {
     const { user, portfolioId } = await requirePortfolioContext();
+
+    // Snapshot yoksa veya güncelliğini yitirdiyse üret — özet boş kalmasın
+    const existingLatest = await getLatestPortfolioSnapshot(portfolioId);
+    const today = startOfDay(new Date());
+    if (
+      !existingLatest ||
+      startOfDay(existingLatest.snapshotDate).getTime() < today.getTime()
+    ) {
+      try {
+        await createDailySnapshot(portfolioId, today);
+      } catch {
+        // snapshot üretimi başarısız olsa bile mevcut veriyle devam
+      }
+    }
+
     const [latest, snapshots, positions, insights, alerts, recommendations] =
       await Promise.all([
       getLatestPortfolioSnapshot(portfolioId),

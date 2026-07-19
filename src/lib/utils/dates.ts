@@ -12,9 +12,14 @@ import {
 
 export const APP_TIMEZONE = "Europe/Istanbul";
 
-/** UTC tarih anahtarı (DB Date alanları için) */
+/**
+ * DB Date / timestamp alanları için kararlı gün anahtarı.
+ * Sunucu TZ’sinden bağımsız olsun diye UTC ISO günü kullanır
+ * (Vercel UTC + local farkında bir gün kayması olmasın).
+ */
 export function toDateKey(date: Date): string {
-  return format(date, "yyyy-MM-dd");
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
 }
 
 export function parseDateKey(key: string): Date {

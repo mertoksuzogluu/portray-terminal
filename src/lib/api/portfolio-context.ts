@@ -31,16 +31,34 @@ export async function getPortfolioSnapshots(
 }
 
 export async function getLatestPositionSnapshots(portfolioId: string) {
+  // Konsolide satırlar (accountId="") — hesap kırılımı çift saymasın
   const latest = await prisma.positionDailySnapshot.findFirst({
-    where: { portfolioId },
+    where: { portfolioId, accountId: "" },
     orderBy: { snapshotDate: "desc" },
     select: { snapshotDate: true },
   });
 
-  if (!latest) return [];
+  if (!latest) {
+    // Eski kayıtlarda accountId dolu olabilir — geriye uyum
+    const fallbackLatest = await prisma.positionDailySnapshot.findFirst({
+      where: { portfolioId },
+      orderBy: { snapshotDate: "desc" },
+      select: { snapshotDate: true },
+    });
+    if (!fallbackLatest) return [];
+    return prisma.positionDailySnapshot.findMany({
+      where: { portfolioId, snapshotDate: fallbackLatest.snapshotDate },
+      include: { asset: true },
+      orderBy: { marketValue: "desc" },
+    });
+  }
 
   return prisma.positionDailySnapshot.findMany({
-    where: { portfolioId, snapshotDate: latest.snapshotDate },
+    where: {
+      portfolioId,
+      snapshotDate: latest.snapshotDate,
+      accountId: "",
+    },
     include: { asset: true },
     orderBy: { marketValue: "desc" },
   });

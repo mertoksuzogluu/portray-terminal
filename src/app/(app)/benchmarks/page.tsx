@@ -22,6 +22,7 @@ interface BenchmarkItem {
   series: { date: string; portfolio: number; benchmark: number }[];
   outperformance: number;
   dataPoints: number;
+  thinPortfolioHistory?: boolean;
 }
 
 export default function BenchmarksPage() {
@@ -79,6 +80,13 @@ export default function BenchmarksPage() {
         <h1 className="font-display text-2xl tracking-tight">Karşılaştırma</h1>
         <p className="text-sm text-muted-foreground">Portföy vs endeks performansı</p>
       </div>
+
+      {benchmarks.some((b) => b.thinPortfolioHistory) && (
+        <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Portföy geçmişiniz kısa (birkaç gün). Grafik endeks serisini gösterir; daha anlamlı
+          karşılaştırma için işlemlerinizi ve fiyat yenilemeyi sürdürün.
+        </p>
+      )}
 
       <Tabs value={active} onValueChange={setActive}>
         <TabsList className="flex-wrap">

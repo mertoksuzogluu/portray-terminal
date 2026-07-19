@@ -10,6 +10,7 @@ import {
   pickWeeklyWatchSymbols,
   type WatchUniverseItem,
 } from "@/lib/data/market-watch-universe";
+import { watchContextLine } from "@/lib/data/watch-stock-context";
 
 export type OpportunitySignal =
   | "NEAR_LOW"
@@ -40,6 +41,8 @@ export interface AssetOpportunity {
   volBucket: "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN";
   signal: OpportunitySignal;
   title: string;
+  /** Kısa, okunabilir fikir özeti */
+  idea: string;
   message: string;
   severity: "INFO" | "POSITIVE" | "WARNING";
 }
@@ -90,7 +93,7 @@ function buildNarrative(input: {
   stats: NonNullable<ReturnType<typeof extendStats>>;
   signal: Exclude<OpportunitySignal, "INSUFFICIENT_DATA">;
   reason: string;
-}): Pick<AssetOpportunity, "signal" | "title" | "message" | "severity"> {
+}): Pick<AssetOpportunity, "signal" | "title" | "idea" | "message" | "severity"> {
   const { symbol, name, assetType, inPortfolio, stats, signal, reason } = input;
   const typeLabel =
     assetType === "GOLD"
@@ -116,49 +119,90 @@ function buildNarrative(input: {
       : `yıllık vol ~%${(stats.realizedVol * 100).toFixed(0)} (${stats.volBucket.toLowerCase()})`;
 
   const windowNote = `Bakış penceresi volatiliteye göre ${stats.lookbackLabel} seçildi (${volTxt}).`;
+  const ctx = watchContextLine(symbol);
+  const ctxNote = ctx ? ` ${ctx}` : "";
 
   if (signal === "NEAR_LOW") {
     const pullNote =
       reason === "vol-pullback"
         ? " Zirveden volatiliteye göre anlamlı geri çekilme var."
         : "";
+    const idea = `Fikir: ${stats.lookbackLabel} banda göre göreli ucuz bölgede; geri çekilme fırsat mı yoksa zayıf trend mi, 3A getiri (${pct(stats.return3m)}) ile birlikte izleyin.`;
     return {
       signal: "NEAR_LOW",
       severity: "POSITIVE",
       title: `${symbol}: ${stats.lookbackLabel} banda göre düşük bölge`,
-      message: `${name} (${typeLabel}) ${stats.lookbackLabel} fiyat bandının alt %${(
+      idea,
+      message: `${idea}${ctxNote} ${name} (${typeLabel}) bandın alt %${(
         (stats.rangePosition ?? 0) * 100
       ).toFixed(0)} diliminde. Dip ${stats.low.toLocaleString("tr-TR", {
         maximumFractionDigits: 2,
       })}, güncel ${stats.current.toLocaleString("tr-TR", {
         maximumFractionDigits: 2,
-      })}. Zirveden ${pct(stats.drawdownFromHigh)}.${pullNote} ${windowNote} ${holdNote} Bu bir alım tavsiyesi değil.`,
+      })}. Zirveden ${pct(stats.drawdownFromHigh)}.${pullNote} ${windowNote} ${holdNote} Yatırım tavsiyesi değildir.`,
     };
   }
 
   if (signal === "NEAR_HIGH") {
+    const idea = `Fikir: ${stats.lookbackLabel} bandın üstünde; momentum devam edebilir ama geri çekilme riski artmış — yeni ekleme için temkinli olun.`;
     return {
       signal: "NEAR_HIGH",
       severity: "WARNING",
       title: `${symbol}: ${stats.lookbackLabel} banda göre yüksek bölge`,
-      message: `${name} ${stats.lookbackLabel} bandın üst bölgesinde. Zirve ${stats.high.toLocaleString(
-        "tr-TR",
-        { maximumFractionDigits: 2 }
-      )}, güncel ${stats.current.toLocaleString("tr-TR", {
+      idea,
+      message: `${idea}${ctxNote} Zirve ${stats.high.toLocaleString("tr-TR", {
+        maximumFractionDigits: 2,
+      })}, güncel ${stats.current.toLocaleString("tr-TR", {
         maximumFractionDigits: 2,
       })}. 3A ${pct(stats.return3m)}, 1Y ${pct(stats.return1y)}. ${windowNote} ${holdNote}`,
     };
   }
 
+  const idea = `Fikir: ${stats.lookbackLabel} orta bantta; net dip/zirve sinyali yok — katalizör veya kırılım bekleyerek izlemek mantıklı.`;
   return {
     signal: "MID_RANGE",
     severity: "INFO",
     title: `${symbol}: ${stats.lookbackLabel} orta bant`,
-    message: `${name} ${stats.lookbackLabel} bandın ~%${(
-      (stats.rangePosition ?? 0.5) * 100
-    ).toFixed(0)} seviyesinde. 3A ${pct(stats.return3m)}, 1Y ${pct(
-      stats.return1y
-    )}. ${windowNote} ${holdNote}`,
+    idea,
+    message: `${idea}${ctxNote} Bant ~%${((stats.rangePosition ?? 0.5) * 100).toFixed(
+      0
+    )}. 3A ${pct(stats.return3m)}, 1Y ${pct(stats.return1y)}. ${windowNote} ${holdNote}`,
+  };
+}
+
+function buildInsufficientNarrative(input: {
+  symbol: string;
+  name: string;
+  observationCount: number;
+  currentPrice: number;
+}): Pick<AssetOpportunity, "signal" | "title" | "idea" | "message" | "severity"> {
+  const ctx = watchContextLine(input.symbol);
+  const priceTxt =
+    input.currentPrice > 0
+      ? ` Son fiyat ${input.currentPrice.toLocaleString("tr-TR", {
+          maximumFractionDigits: 2,
+        })}.`
+      : "";
+
+  if (input.observationCount === 0) {
+    const idea =
+      "Fikir: Bu hafta listede; fiyat geçmişi henüz gelmedi — «Geçmişi doldur & yenile» ile veriyi çekin, ardından bant fikri oluşur.";
+    return {
+      signal: "INSUFFICIENT_DATA",
+      severity: "INFO",
+      title: `${input.symbol}: veri bekleniyor`,
+      idea,
+      message: `${idea}${ctx ? ` ${ctx}` : ""}${priceTxt} ${input.name} için henüz işlem günü kaydı yok.`,
+    };
+  }
+
+  const idea = `Fikir: Yalnızca ${input.observationCount} gün veri var; kısa vadeli yön için erken — yine de sektör bağlamıyla izleme listesinde tutun.`;
+  return {
+    signal: "INSUFFICIENT_DATA",
+    severity: "INFO",
+    title: `${input.symbol}: kısa geçmiş (${input.observationCount} gün)`,
+    idea,
+    message: `${idea}${ctx ? ` ${ctx}` : ""}${priceTxt} Bant analizi için birkaç işlem günü daha gerekir.`,
   };
 }
 
@@ -212,13 +256,14 @@ export async function analyzeMarketOpportunities(options: {
   stockCount?: number;
 }): Promise<MarketOpportunityAnalysis> {
   const asOf = startOfDay(new Date());
-  // Vol tahmini için en fazla 1y veri yeter; 2y sabiti kaldırıldı.
-  const since = subYears(asOf, 1);
+  // Vol penceresi ≤ ~1y; biraz fazla tampon için 14 ay bak.
+  const since = subYears(asOf, 2);
   const weekly = pickWeeklyWatchSymbols({
     asOf,
     stockCount: options.stockCount ?? 6,
   });
   await ensureWatchAssets(weekly.all);
+  const watchSymbolOrder = weekly.all.map((w) => w.symbol);
 
   const positions = await getPortfolioPositions(options.portfolioId, asOf);
   const heldIds = new Set(positions.byAsset.map((p) => p.assetId));
@@ -275,6 +320,21 @@ export async function analyzeMarketOpportunities(options: {
     const stats = extendStats(closes, asset.assetType);
 
     if (!stats) {
+      let currentPrice = closes.at(-1) ?? 0;
+      if (currentPrice <= 0) {
+        const latest = await prisma.assetPrice.findFirst({
+          where: { assetId: asset.id },
+          orderBy: { priceDate: "desc" },
+          select: { close: true },
+        });
+        if (latest) currentPrice = Number(latest.close.toString());
+      }
+      const narrative = buildInsufficientNarrative({
+        symbol: asset.symbol,
+        name: asset.name,
+        observationCount: closes.length,
+        currentPrice,
+      });
       opportunities.push({
         assetId: asset.id,
         symbol: asset.symbol,
@@ -282,7 +342,7 @@ export async function analyzeMarketOpportunities(options: {
         assetType: asset.assetType,
         inPortfolio: heldIds.has(asset.id),
         portfolioWeight: weightByAsset.get(asset.id) ?? null,
-        currentPrice: closes.at(-1) ?? 0,
+        currentPrice,
         low2y: 0,
         high2y: 0,
         rangePosition: null,
@@ -295,10 +355,7 @@ export async function analyzeMarketOpportunities(options: {
         lookbackLabel: "—",
         realizedVol: null,
         volBucket: "UNKNOWN",
-        signal: "INSUFFICIENT_DATA",
-        title: `${asset.symbol}: yetersiz geçmiş`,
-        message: `${asset.name} için volatilite penceresi hesaplanacak kadar fiyat yok (${closes.length} gün). Geçmişi doldur & yenile deneyin.`,
-        severity: "INFO",
+        ...narrative,
       });
       continue;
     }
@@ -355,6 +412,11 @@ export async function analyzeMarketOpportunities(options: {
   const medianDays =
     lookbacks.length > 0 ? lookbacks[Math.floor(lookbacks.length / 2)] : 126;
 
+  const bySymbol = new Map(opportunities.map((o) => [o.symbol, o]));
+  const watchlistHighlights = watchSymbolOrder
+    .map((sym) => bySymbol.get(sym))
+    .filter((o): o is AssetOpportunity => !!o);
+
   return {
     asOf: asOf.toISOString().slice(0, 10),
     years: medianDays / 252,
@@ -362,11 +424,11 @@ export async function analyzeMarketOpportunities(options: {
     weekLabel: `Hafta ${weekly.weekKey}`,
     opportunities,
     portfolioHighlights: opportunities.filter((o) => o.inPortfolio),
-    watchlistHighlights: opportunities.filter((o) => !o.inPortfolio),
+    watchlistHighlights,
     methodology:
-      "Bakış süresi varlık volatilitesine göre otomatik seçilir (yüksek vol → 2–4 ay, düşük vol → 9–12 ay). İzleme hisseleri her ISO haftası döner; altın/döviz sabit çapa kalır.",
+      "Bakış süresi varlık volatilitesine göre otomatik seçilir (yüksek vol → 2–4 ay, düşük vol → 9–12 ay). İzleme hisseleri her ISO haftası döner; altın/döviz sabit çapa kalır. Sayfa açılınca eksik geçmiş otomatik doldurulur.",
     disclaimer:
-      "Yatırım tavsiyesi değildir. Bant konumu gelecek performansı göstermez; yalnızca göreli bağlamdır.",
+      "Yatırım tavsiyesi değildir. Bant konumu gelecek performansı göstermez; yalnızca göreli bağlam ve izleme fikridir.",
   };
 }
 
