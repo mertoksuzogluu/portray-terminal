@@ -3,7 +3,7 @@ import { verifyCronSecret } from "@/lib/api/cron-auth";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { prisma } from "@/lib/db/prisma";
 import { createDailySnapshot } from "@/lib/services/snapshot-service";
-import { startOfDay } from "@/lib/utils/dates";
+import { istanbulToday } from "@/lib/utils/dates";
 
 export async function GET(req: NextRequest) {
   if (!verifyCronSecret(req)) {
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const asOf = startOfDay(new Date());
+    const asOf = istanbulToday();
     const portfolios = await prisma.portfolio.findMany({ select: { id: true } });
 
     const results: Array<{ portfolioId: string; snapshotId: string }> = [];

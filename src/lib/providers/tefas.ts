@@ -4,6 +4,7 @@ import type {
   FundPeriodReturn,
   FundQuote,
 } from "./types";
+import { marketDateOnly } from "@/lib/utils/dates";
 
 /**
  * TEFAS Nisan 2026'da eski `/api/DB/BindHistoryInfo` (ASP.NET) uçlarını kapattı;
@@ -64,11 +65,20 @@ function sleep(ms: number): Promise<void> {
 }
 
 function parseTefasDate(value: string | undefined): Date {
-  if (!value) return new Date();
+  if (!value) return marketDateOnly(new Date());
   const match = /\/Date\((\d+)\)\//.exec(value);
-  if (match) return new Date(Number(match[1]));
+  if (match) return marketDateOnly(new Date(Number(match[1])));
+  // YYYY-MM-DD veya ISO → İstanbul takvim günü
+  const isoDay = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+  if (isoDay) {
+    return new Date(
+      Date.UTC(Number(isoDay[1]), Number(isoDay[2]) - 1, Number(isoDay[3]))
+    );
+  }
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  return Number.isNaN(parsed.getTime())
+    ? marketDateOnly(new Date())
+    : marketDateOnly(parsed);
 }
 
 function toYyyymmdd(date: Date): string {

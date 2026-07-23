@@ -64,6 +64,10 @@ export async function GET(
             marketValue: Number(latestPosition.marketValue.toString()),
             unrealizedPnl: Number(latestPosition.unrealizedProfitLoss.toString()),
             dailyPnl: Number(latestPosition.dailyProfitLoss.toString()),
+            dailyReturn:
+              latestPosition.dailyReturn != null
+                ? Number(latestPosition.dailyReturn.toString())
+                : null,
             weight: latestPosition.portfolioWeight
               ? Number(latestPosition.portfolioWeight.toString())
               : null,

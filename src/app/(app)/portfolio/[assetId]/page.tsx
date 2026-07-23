@@ -34,6 +34,7 @@ interface AssetDetail {
     marketValue: number;
     unrealizedPnl: number;
     dailyPnl: number;
+    dailyReturn: number | null;
     weight: number | null;
     snapshotDate: string;
   } | null;
@@ -93,7 +94,7 @@ async function AssetDetailContent({ assetId }: { assetId: string }) {
       </div>
 
       {position ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Metric label="Piyasa Değeri" value={formatMoney(position.marketValue, asset.currency)} />
           <Metric label="Adet" value={formatNumber(position.quantity, 2)} />
           <Metric
@@ -103,6 +104,16 @@ async function AssetDetailContent({ assetId }: { assetId: string }) {
           <Metric
             label="Günlük K/Z"
             value={<PnlValue value={position.dailyPnl} currency={asset.currency} />}
+          />
+          <Metric
+            label="Günlük Getiri"
+            value={
+              position.dailyReturn != null ? (
+                <PnlValue value={position.dailyReturn * 100} type="percent" />
+              ) : (
+                "—"
+              )
+            }
           />
         </div>
       ) : (

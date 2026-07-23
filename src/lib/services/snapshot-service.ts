@@ -12,7 +12,7 @@ import {
   calculateRealReturn,
   type InflationPoint,
 } from "@/lib/calculations/inflation";
-import { startOfDay } from "@/lib/utils/dates";
+import { addUtcDays, istanbulToday, startOfDay } from "@/lib/utils/dates";
 import { Prisma } from "@prisma/client";
 import type { Transaction } from "@prisma/client";
 
@@ -294,14 +294,14 @@ export async function createDailySnapshot(
       netContributions: dec(netContributions),
       dailyExternalCashFlow: dec(externalCashFlow),
       dailyProfitLoss: dec(dailyProfitLoss),
-      dailyReturn: dailyReturn ? dec(dailyReturn) : null,
+      dailyReturn: dailyReturn != null ? dec(dailyReturn) : null,
       cumulativeProfitLoss: dec(cumulativeProfitLoss),
-      cumulativeReturn: cumulativeReturn ? dec(cumulativeReturn) : null,
-      twrDailyFactor: factor ? dec(factor) : null,
-      twrCumulative: twrCumulative ? dec(twrCumulative) : null,
+      cumulativeReturn: cumulativeReturn != null ? dec(cumulativeReturn) : null,
+      twrDailyFactor: factor != null ? dec(factor) : null,
+      twrCumulative: twrCumulative != null ? dec(twrCumulative) : null,
       inflationAdjustedCapital: dec(real.inflationAdjustedCapital),
       realProfitLoss: dec(real.realProfit),
-      realReturn: real.realReturn ? dec(real.realReturn) : null,
+      realReturn: real.realReturn != null ? dec(real.realReturn) : null,
       valueInUsd: usdRate && !usdRate.isZero()
         ? dec(totalMarketValue.div(usdRate))
         : null,
@@ -316,11 +316,11 @@ export async function createDailySnapshot(
       netContributions: dec(netContributions),
       dailyExternalCashFlow: dec(externalCashFlow),
       dailyProfitLoss: dec(dailyProfitLoss),
-      dailyReturn: dailyReturn ? dec(dailyReturn) : null,
+      dailyReturn: dailyReturn != null ? dec(dailyReturn) : null,
       cumulativeProfitLoss: dec(cumulativeProfitLoss),
-      cumulativeReturn: cumulativeReturn ? dec(cumulativeReturn) : null,
-      twrDailyFactor: factor ? dec(factor) : null,
-      twrCumulative: twrCumulative ? dec(twrCumulative) : null,
+      cumulativeReturn: cumulativeReturn != null ? dec(cumulativeReturn) : null,
+      twrDailyFactor: factor != null ? dec(factor) : null,
+      twrCumulative: twrCumulative != null ? dec(twrCumulative) : null,
       inflationAdjustedCapital: dec(real.inflationAdjustedCapital),
       realProfitLoss: dec(real.realProfit),
       realReturn: real.realReturn ? dec(real.realReturn) : null,
@@ -343,8 +343,8 @@ export async function createDailySnapshot(
     const dailyBase = prevValue.isZero() ? investedToday : prevValue;
     const dailyRet = dailyBase.isZero() ? null : dailyPl.div(dailyBase);
     const contrib =
-      dailyReturn && row.weight
-        ? row.weight.times(dailyRet ?? 0)
+      dailyRet != null && !row.weight.isZero()
+        ? row.weight.times(dailyRet)
         : null;
 
     await prisma.positionDailySnapshot.upsert({
@@ -366,11 +366,11 @@ export async function createDailySnapshot(
         marketPrice: dec(row.marketPrice),
         marketValue: dec(row.marketValue),
         dailyProfitLoss: dec(dailyPl),
-        dailyReturn: dailyRet ? dec(dailyRet) : null,
+        dailyReturn: dailyRet != null ? dec(dailyRet) : null,
         unrealizedProfitLoss: dec(row.unrealized),
-        totalReturn: row.totalReturn ? dec(row.totalReturn) : null,
+        totalReturn: row.totalReturn != null ? dec(row.totalReturn) : null,
         portfolioWeight: dec(row.weight),
-        contributionToDailyReturn: contrib ? dec(contrib) : null,
+        contributionToDailyReturn: contrib != null ? dec(contrib) : null,
       },
       update: {
         quantity: dec(row.quantity),
@@ -378,11 +378,11 @@ export async function createDailySnapshot(
         marketPrice: dec(row.marketPrice),
         marketValue: dec(row.marketValue),
         dailyProfitLoss: dec(dailyPl),
-        dailyReturn: dailyRet ? dec(dailyRet) : null,
+        dailyReturn: dailyRet != null ? dec(dailyRet) : null,
         unrealizedProfitLoss: dec(row.unrealized),
-        totalReturn: row.totalReturn ? dec(row.totalReturn) : null,
+        totalReturn: row.totalReturn != null ? dec(row.totalReturn) : null,
         portfolioWeight: dec(row.weight),
-        contributionToDailyReturn: contrib ? dec(contrib) : null,
+        contributionToDailyReturn: contrib != null ? dec(contrib) : null,
       },
     });
   }
@@ -402,6 +402,77 @@ export async function createDailySnapshot(
 }
 
 /**
+ * Snapshot üretilecek günler: işlem günleri + eldeki varlıkların fiyat günleri + bugün.
+ * Hafta sonu / fiyatsız günlerde %0 satır üretmez; getiri bir sonraki fiyat gününe yazılır.
+ */
+async function collectSnapshotDates(
+  portfolioId: string,
+  fromDate: Date,
+  toDate: Date
+): Promise<Date[]> {
+  const start = startOfDay(fromDate);
+  const end = startOfDay(toDate);
+  const keys = new Set<string>();
+
+  const txs = await prisma.transaction.findMany({
+    where: {
+      portfolioId,
+      transactionDate: { gte: start, lte: end },
+    },
+    select: { transactionDate: true, assetId: true },
+  });
+  for (const tx of txs) {
+    keys.add(startOfDay(tx.transactionDate).toISOString());
+  }
+
+  // Portföyde hiç işlem yoksa bile bugünü ekle
+  const allAssetIds = [
+    ...new Set(
+      (
+        await prisma.transaction.findMany({
+          where: { portfolioId, assetId: { not: null } },
+          select: { assetId: true },
+          distinct: ["assetId"],
+        })
+      )
+        .map((t) => t.assetId)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+
+  if (allAssetIds.length > 0) {
+    const prices = await prisma.assetPrice.findMany({
+      where: {
+        assetId: { in: allAssetIds },
+        priceDate: { gte: start, lte: end },
+      },
+      select: { priceDate: true },
+      distinct: ["priceDate"],
+    });
+    for (const p of prices) {
+      keys.add(startOfDay(p.priceDate).toISOString());
+    }
+  }
+
+  keys.add(end.toISOString());
+
+  // İlk işlemden önceki günleri ele
+  const firstTx = await prisma.transaction.findFirst({
+    where: { portfolioId },
+    orderBy: { transactionDate: "asc" },
+    select: { transactionDate: true },
+  });
+  const minTime = firstTx
+    ? startOfDay(firstTx.transactionDate).getTime()
+    : start.getTime();
+
+  return [...keys]
+    .map((k) => new Date(k))
+    .filter((d) => d.getTime() >= minTime && d.getTime() <= end.getTime())
+    .sort((a, b) => a.getTime() - b.getTime());
+}
+
+/**
  * Belirli bir tarihten bugüne snapshot'ları yeniden hesaplar.
  */
 export async function rebuildSnapshotsFrom(
@@ -409,7 +480,7 @@ export async function rebuildSnapshotsFrom(
   fromDate: Date
 ): Promise<number> {
   const start = startOfDay(fromDate);
-  const today = startOfDay(new Date());
+  const today = istanbulToday();
 
   // Önce etkilenen aralığı sil (idempotent yeniden üretim)
   await prisma.positionDailySnapshot.deleteMany({
@@ -419,12 +490,25 @@ export async function rebuildSnapshotsFrom(
     where: { portfolioId, snapshotDate: { gte: start } },
   });
 
+  const dates = await collectSnapshotDates(portfolioId, start, today);
+  // En azından başlangıç günü yoksa ve portföy doluysa, aralıktaki her günü dene
+  const toBuild =
+    dates.length > 0
+      ? dates
+      : (() => {
+          const days: Date[] = [];
+          let cursor = new Date(start);
+          while (cursor.getTime() <= today.getTime()) {
+            days.push(new Date(cursor));
+            cursor = addUtcDays(cursor, 1);
+          }
+          return days;
+        })();
+
   let count = 0;
-  const cursor = new Date(start);
-  while (cursor.getTime() <= today.getTime()) {
-    await createDailySnapshot(portfolioId, new Date(cursor));
+  for (const day of toBuild) {
+    await createDailySnapshot(portfolioId, day);
     count += 1;
-    cursor.setDate(cursor.getDate() + 1);
   }
   return count;
 }

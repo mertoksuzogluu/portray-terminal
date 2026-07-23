@@ -2,7 +2,7 @@ import { subYears } from "date-fns";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getFundProvider, getStockProvider } from "@/lib/providers";
-import { startOfDay } from "@/lib/utils/dates";
+import { marketDateOnly } from "@/lib/utils/dates";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -20,7 +20,7 @@ export async function syncHistoricalPrices(options?: {
 }): Promise<{ processed: number; skipped: number; errors: string[] }> {
   const years = options?.years ?? 2;
   const minPoints = options?.minPoints ?? 180;
-  const end = startOfDay(new Date());
+  const end = marketDateOnly(new Date());
   const start = subYears(end, years);
 
   const assets = await prisma.asset.findMany({
@@ -59,7 +59,7 @@ export async function syncHistoricalPrices(options?: {
         const code = asset.tefasCode ?? asset.symbol;
         const rows = await fundProvider.getHistoricalPrices(code, start, end);
         for (const row of rows) {
-          const priceDate = startOfDay(row.date);
+          const priceDate = marketDateOnly(row.date);
           await prisma.assetPrice.upsert({
             where: {
               assetId_priceDate_source: {
@@ -104,7 +104,7 @@ export async function syncHistoricalPrices(options?: {
           : await stockProvider.getHistoricalPrices(asset.symbol, start, end);
 
       for (const row of rows) {
-        const priceDate = startOfDay(row.date);
+        const priceDate = marketDateOnly(row.date);
         await prisma.assetPrice.upsert({
           where: {
             assetId_priceDate_source: {

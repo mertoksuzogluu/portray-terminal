@@ -6,7 +6,7 @@ import {
   getStockProvider,
 } from "@/lib/providers";
 import { Prisma } from "@prisma/client";
-import { startOfDay } from "@/lib/utils/dates";
+import { marketDateOnly } from "@/lib/utils/dates";
 
 function isBistOpen(now = new Date()): boolean {
   // Europe/Istanbul kabaca: hafta içi 10:00–18:00
@@ -77,7 +77,7 @@ export async function syncMarketData(options?: {
           const code = asset.tefasCode ?? asset.symbol;
           try {
             const quote = await fundProvider.getFundQuote(code);
-            const priceDate = startOfDay(quote.priceDate);
+            const priceDate = marketDateOnly(quote.priceDate);
             await prisma.assetPrice.upsert({
               where: {
                 assetId_priceDate_source: {
@@ -138,7 +138,7 @@ export async function syncMarketData(options?: {
             asset.providerSymbol && stockProvider.getQuoteByProviderSymbol
               ? await stockProvider.getQuoteByProviderSymbol(asset.providerSymbol)
               : await stockProvider.getQuote(asset.symbol);
-          const priceDate = startOfDay(quote.asOf);
+          const priceDate = marketDateOnly(quote.asOf);
 
           await prisma.assetPrice.upsert({
             where: {
@@ -244,13 +244,13 @@ async function syncBenchmarks(force: boolean): Promise<number> {
           where: {
             benchmarkId_priceDate_source: {
               benchmarkId: bench.id,
-              priceDate: startOfDay(quote.asOf),
+              priceDate: marketDateOnly(quote.asOf),
               source: quote.source,
             },
           },
           create: {
             benchmarkId: bench.id,
-            priceDate: startOfDay(quote.asOf),
+            priceDate: marketDateOnly(quote.asOf),
             value: new Prisma.Decimal(quote.rate),
             source: quote.source,
           },
@@ -273,13 +273,13 @@ async function syncBenchmarks(force: boolean): Promise<number> {
           where: {
             benchmarkId_priceDate_source: {
               benchmarkId: bench.id,
-              priceDate: startOfDay(quote.asOf),
+              priceDate: marketDateOnly(quote.asOf),
               source: quote.source,
             },
           },
           create: {
             benchmarkId: bench.id,
-            priceDate: startOfDay(quote.asOf),
+            priceDate: marketDateOnly(quote.asOf),
             value: new Prisma.Decimal(quote.price),
             source: quote.source,
           },

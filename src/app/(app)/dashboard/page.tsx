@@ -242,7 +242,14 @@ async function DashboardContent() {
                         <span className="font-medium">{w.symbol}</span>
                         <span className="ml-2 text-xs text-muted-foreground">{w.name}</span>
                       </Link>
-                      <PnlValue value={w.pnl} />
+                      <div className="text-right">
+                        <PnlValue value={w.pnl} />
+                        {w.returnPct != null && (
+                          <div className="text-xs">
+                            <PnlValue value={w.returnPct} type="percent" showIcon={false} />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))
                 )}
@@ -263,7 +270,14 @@ async function DashboardContent() {
                   data.losers.map((l) => (
                     <div key={l.symbol} className="flex items-center justify-between">
                       <span className="font-medium">{l.symbol}</span>
-                      <PnlValue value={l.pnl} />
+                      <div className="text-right">
+                        <PnlValue value={l.pnl} />
+                        {l.returnPct != null && (
+                          <div className="text-xs">
+                            <PnlValue value={l.returnPct} type="percent" showIcon={false} />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))
                 )}

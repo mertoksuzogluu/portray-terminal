@@ -9,7 +9,7 @@ import {
   requirePortfolioContext,
 } from "@/lib/api/portfolio-context";
 import { jsonError, jsonOk } from "@/lib/api/response";
-import { startOfDay, toDateKey } from "@/lib/utils/dates";
+import { istanbulToday, toDateKey } from "@/lib/utils/dates";
 import { createDailySnapshot } from "@/lib/services/snapshot-service";
 
 export async function GET() {
@@ -18,10 +18,10 @@ export async function GET() {
 
     // Snapshot yoksa veya güncelliğini yitirdiyse üret — özet boş kalmasın
     const existingLatest = await getLatestPortfolioSnapshot(portfolioId);
-    const today = startOfDay(new Date());
+    const today = istanbulToday();
     if (
       !existingLatest ||
-      startOfDay(existingLatest.snapshotDate).getTime() < today.getTime()
+      istanbulToday(existingLatest.snapshotDate).getTime() < today.getTime()
     ) {
       try {
         await createDailySnapshot(portfolioId, today);
@@ -61,7 +61,7 @@ export async function GET() {
     const chartData = snapshots.map((s) => ({
       date: toDateKey(s.snapshotDate),
       value: Number(s.totalMarketValue.toString()),
-      dailyReturn: s.dailyReturn ? Number(s.dailyReturn.toString()) : null,
+      dailyReturn: s.dailyReturn != null ? Number(s.dailyReturn.toString()) : null,
     }));
 
     const totalValue = latest
@@ -87,7 +87,7 @@ export async function GET() {
         symbol: p.asset.symbol,
         name: p.asset.name,
         pnl: Number(p.dailyProfitLoss.toString()),
-        returnPct: p.dailyReturn ? Number(p.dailyReturn.toString()) * 100 : null,
+        returnPct: p.dailyReturn != null ? Number(p.dailyReturn.toString()) * 100 : null,
       }));
 
     const losers = sortedByPnl
@@ -99,7 +99,7 @@ export async function GET() {
         symbol: p.asset.symbol,
         name: p.asset.name,
         pnl: Number(p.dailyProfitLoss.toString()),
-        returnPct: p.dailyReturn ? Number(p.dailyReturn.toString()) * 100 : null,
+        returnPct: p.dailyReturn != null ? Number(p.dailyReturn.toString()) * 100 : null,
       }));
 
     const dailyReturns = snapshots
@@ -131,7 +131,7 @@ export async function GET() {
         totalValue,
         cashValue: latest ? Number(latest.cashValue.toString()) : 0,
         dailyPnl: latest ? Number(latest.dailyProfitLoss.toString()) : 0,
-        dailyReturn: latest?.dailyReturn ? Number(latest.dailyReturn.toString()) : null,
+        dailyReturn: latest?.dailyReturn != null ? Number(latest.dailyReturn.toString()) : null,
         cumulativeReturn: latest?.cumulativeReturn
           ? Number(latest.cumulativeReturn.toString())
           : null,

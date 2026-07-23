@@ -39,6 +39,8 @@ interface PositionRow {
   marketPrice: number;
   marketValue: number;
   unrealizedPnl: number;
+  dailyPnl: number;
+  dailyReturn: number | null;
   totalReturn: number;
   weight: number;
   dataQuality: string;
@@ -111,6 +113,16 @@ export default function PortfolioPage() {
         accessorKey: "unrealizedPnl",
         header: "Gerç. K/Z",
         cell: ({ getValue }) => <PnlValue value={getValue() as number} />,
+      },
+      {
+        accessorKey: "dailyReturn",
+        header: "Günlük %",
+        cell: ({ row }) =>
+          row.original.dailyReturn != null ? (
+            <PnlValue value={row.original.dailyReturn * 100} type="percent" />
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
       },
       {
         accessorKey: "totalReturn",

@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db/prisma";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { syncInflationData, syncMarketData } from "@/lib/services/market-sync";
 import { syncHistoricalPrices } from "@/lib/services/historical-sync";
-import { createDailySnapshot } from "@/lib/services/snapshot-service";
+import { createDailySnapshot, rebuildSnapshotsFrom } from "@/lib/services/snapshot-service";
+import { addUtcDays, istanbulToday } from "@/lib/utils/dates";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -91,9 +92,11 @@ export async function POST() {
       };
     }
 
-    // 3) Güncel fiyatlarla snapshot'ı tazele.
+    // 3) Güncel fiyatlarla son dönemi yeniden hesapla — günlük getiriler dolsun.
+    const rebuildFrom = addUtcDays(istanbulToday(), -45);
+    let snapshotsRebuilt = 0;
     for (const p of portfolios) {
-      await createDailySnapshot(p.id);
+      snapshotsRebuilt += await rebuildSnapshotsFrom(p.id, rebuildFrom);
     }
 
     return jsonOk({
@@ -102,6 +105,7 @@ export async function POST() {
       errors: [...market.errors, ...history.errors],
       portfolios: portfolios.length,
       history,
+      snapshotsRebuilt,
     });
   } catch (error) {
     return jsonError(error, 400);
