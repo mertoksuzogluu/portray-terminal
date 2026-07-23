@@ -31,3 +31,15 @@ describe("market dates (Europe/Istanbul)", () => {
     expect(toDateKey(t)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
+
+describe("previousWeekday", () => {
+  it("skips weekends", async () => {
+    const { previousWeekday } = await import("@/lib/utils/dates");
+    expect(previousWeekday(new Date("2026-07-23T00:00:00.000Z")).toISOString()).toBe(
+      "2026-07-22T00:00:00.000Z"
+    );
+    expect(previousWeekday(new Date("2026-07-20T00:00:00.000Z")).toISOString()).toBe(
+      "2026-07-17T00:00:00.000Z"
+    );
+  });
+});

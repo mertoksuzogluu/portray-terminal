@@ -23,8 +23,26 @@ function dec(value: Decimal): Prisma.Decimal {
 async function getLatestPriceMap(
   assetIds: string[],
   asOf: Date
-): Promise<Map<string, { price: Decimal; fetchedAt: Date; quality: string }>> {
-  const map = new Map<string, { price: Decimal; fetchedAt: Date; quality: string }>();
+): Promise<
+  Map<
+    string,
+    {
+      price: Decimal;
+      previousClose: Decimal | null;
+      fetchedAt: Date;
+      quality: string;
+    }
+  >
+> {
+  const map = new Map<
+    string,
+    {
+      price: Decimal;
+      previousClose: Decimal | null;
+      fetchedAt: Date;
+      quality: string;
+    }
+  >();
   if (assetIds.length === 0) return map;
 
   const prices = await prisma.assetPrice.findMany({
@@ -39,6 +57,9 @@ async function getLatestPriceMap(
     if (map.has(p.assetId)) continue;
     map.set(p.assetId, {
       price: d(p.close.toString()),
+      previousClose: p.previousClose
+        ? d(p.previousClose.toString())
+        : null,
       fetchedAt: p.fetchedAt,
       quality: p.dataQuality,
     });
@@ -131,6 +152,7 @@ export async function createDailySnapshot(
     quantity: Decimal;
     averageCost: Decimal;
     marketPrice: Decimal;
+    previousClose: Decimal | null;
     marketValue: Decimal;
     unrealized: Decimal;
     totalReturn: Decimal | null;
@@ -152,6 +174,7 @@ export async function createDailySnapshot(
       quantity: pos.quantity,
       averageCost: pos.averageCost,
       marketPrice,
+      previousClose: px?.previousClose ?? null,
       marketValue,
       unrealized,
       totalReturn,
@@ -191,11 +214,62 @@ export async function createDailySnapshot(
     ? netContributions.minus(netContribAsOf(allTx, previous.snapshotDate))
     : netContributions;
 
-  const factor = dailyTwrFactor(beginValue, totalMarketValue, externalCashFlow);
-  const dailyReturn = dailyReturnFromFactor(factor);
-  // Günlük K/Z = değer değişimi eksi o gün dışarıdan giren para (alım/nakit).
-  // Böylece alım günü, alım tutarı kâr gibi görünmez.
-  const dailyProfitLoss = totalMarketValue.minus(beginValue).minus(externalCashFlow);
+  // Varsayılan: önceki snapshot'a göre TWR (ara gün yoksa birleşik getiri verebilir).
+  let factor = dailyTwrFactor(beginValue, totalMarketValue, externalCashFlow);
+  let dailyReturn = dailyReturnFromFactor(factor);
+  let dailyProfitLoss = totalMarketValue.minus(beginValue).minus(externalCashFlow);
+
+  // Bugün varlık bazında net yatırılan tutar (alım maliyeti - satış geliri).
+  const investedTodayByAsset = new Map<string, Decimal>();
+  for (const tx of allTx) {
+    if (!tx.assetId) continue;
+    if (startOfDay(tx.transactionDate).getTime() !== asOf.getTime()) continue;
+    const fx = d(tx.fxRateToBase.toString());
+    const qty = d(tx.quantity.toString());
+    const price = d(tx.unitPrice.toString()).times(fx);
+    const fees = d(tx.commission.toString())
+      .plus(tx.tax.toString())
+      .plus(tx.otherCost.toString())
+      .times(fx);
+    let flow = d(0);
+    if (tx.transactionType === "BUY" || tx.transactionType === "TRANSFER_IN") {
+      flow = qty.times(price).plus(fees);
+    } else if (
+      tx.transactionType === "SELL" ||
+      tx.transactionType === "TRANSFER_OUT"
+    ) {
+      flow = qty.times(price).minus(fees).neg();
+    }
+    investedTodayByAsset.set(
+      tx.assetId,
+      (investedTodayByAsset.get(tx.assetId) ?? d(0)).plus(flow)
+    );
+  }
+
+  // TEFAS/borsa previousClose varsa: bugünkü tek gün getirisini kullan
+  // (eksik ara gün snapshot'ı dünü+bugünü birleştirmesin).
+  const canUsePrevClose =
+    positionRows.length > 0 &&
+    externalCashFlow.isZero() &&
+    positionRows.every(
+      (r) =>
+        r.previousClose &&
+        !r.previousClose.isZero() &&
+        (investedTodayByAsset.get(r.assetId) ?? d(0)).isZero()
+    );
+
+  if (canUsePrevClose) {
+    let oneDayPl = d(0);
+    for (const row of positionRows) {
+      oneDayPl = oneDayPl.plus(
+        row.quantity.times(row.marketPrice.minus(row.previousClose!))
+      );
+    }
+    dailyProfitLoss = oneDayPl;
+    const impliedBegin = totalMarketValue.minus(oneDayPl);
+    dailyReturn = impliedBegin.isZero() ? null : oneDayPl.div(impliedBegin);
+    factor = dailyReturn != null ? d(1).plus(dailyReturn) : null;
+  }
 
   const prevTwr = previous?.twrCumulative
     ? d(previous.twrCumulative.toString())
@@ -252,34 +326,6 @@ export async function createDailySnapshot(
   const prevPosMap = new Map(
     prevPositions.map((p) => [p.assetId, p])
   );
-
-  // Bugün varlık bazında net yatırılan tutar (alım maliyeti - satış geliri).
-  // Günlük K/Z'den düşülür ki yeni alım "kâr" gibi görünmesin.
-  const investedTodayByAsset = new Map<string, Decimal>();
-  for (const tx of allTx) {
-    if (!tx.assetId) continue;
-    if (startOfDay(tx.transactionDate).getTime() !== asOf.getTime()) continue;
-    const fx = d(tx.fxRateToBase.toString());
-    const qty = d(tx.quantity.toString());
-    const price = d(tx.unitPrice.toString()).times(fx);
-    const fees = d(tx.commission.toString())
-      .plus(tx.tax.toString())
-      .plus(tx.otherCost.toString())
-      .times(fx);
-    let flow = d(0);
-    if (tx.transactionType === "BUY" || tx.transactionType === "TRANSFER_IN") {
-      flow = qty.times(price).plus(fees);
-    } else if (
-      tx.transactionType === "SELL" ||
-      tx.transactionType === "TRANSFER_OUT"
-    ) {
-      flow = qty.times(price).minus(fees).neg();
-    }
-    investedTodayByAsset.set(
-      tx.assetId,
-      (investedTodayByAsset.get(tx.assetId) ?? d(0)).plus(flow)
-    );
-  }
 
   const portfolioSnapshot = await prisma.portfolioDailySnapshot.upsert({
     where: {
@@ -338,10 +384,23 @@ export async function createDailySnapshot(
     const prev = prevPosMap.get(row.assetId);
     const prevValue = prev ? d(prev.marketValue.toString()) : d(0);
     const investedToday = investedTodayByAsset.get(row.assetId) ?? d(0);
-    // Günlük K/Z: piyasa değeri değişimi eksi bugün bu varlığa yatırılan para.
-    const dailyPl = row.marketValue.minus(prevValue).minus(investedToday);
-    const dailyBase = prevValue.isZero() ? investedToday : prevValue;
-    const dailyRet = dailyBase.isZero() ? null : dailyPl.div(dailyBase);
+
+    // Fon/hisse: bugünkü fiyat satırında previousClose varsa TEFAS/borsa
+    // günlük getirisini kullan — eksik ara gün snapshot'ı dünü+bugünü birleştirmez.
+    let dailyPl: Decimal;
+    let dailyRet: Decimal | null;
+    if (
+      row.previousClose &&
+      !row.previousClose.isZero() &&
+      investedToday.isZero()
+    ) {
+      dailyRet = row.marketPrice.minus(row.previousClose).div(row.previousClose);
+      dailyPl = row.quantity.times(row.marketPrice.minus(row.previousClose));
+    } else {
+      dailyPl = row.marketValue.minus(prevValue).minus(investedToday);
+      const dailyBase = prevValue.isZero() ? investedToday : prevValue;
+      dailyRet = dailyBase.isZero() ? null : dailyPl.div(dailyBase);
+    }
     const contrib =
       dailyRet != null && !row.weight.isZero()
         ? row.weight.times(dailyRet)

@@ -6,7 +6,7 @@ import {
   getStockProvider,
 } from "@/lib/providers";
 import { Prisma } from "@prisma/client";
-import { marketDateOnly } from "@/lib/utils/dates";
+import { marketDateOnly, previousWeekday } from "@/lib/utils/dates";
 
 function isBistOpen(now = new Date()): boolean {
   // Europe/Istanbul kabaca: hafta içi 10:00–18:00
@@ -27,6 +27,42 @@ function isBistOpen(now = new Date()): boolean {
 function isStale(fetchedAt: Date, maxAgeHours: number): boolean {
   const ageMs = Date.now() - fetchedAt.getTime();
   return ageMs > maxAgeHours * 60 * 60 * 1000;
+}
+
+/**
+ * Bugünkü fon fiyatının previousClose'unu bir önceki işlem gününe yazar.
+ * Eksik gün olursa (cron kaçtı / tatil) bugünkü getiri dün+bugün birleşmesin.
+ */
+async function ensurePreviousDayFundPrice(params: {
+  assetId: string;
+  currency: string;
+  priceDate: Date;
+  previousClose: string;
+  source: string;
+  fetchedAt: Date;
+}): Promise<void> {
+  const prevDate = previousWeekday(params.priceDate);
+  const existing = await prisma.assetPrice.findFirst({
+    where: {
+      assetId: params.assetId,
+      priceDate: prevDate,
+    },
+  });
+  if (existing) return;
+
+  await prisma.assetPrice.create({
+    data: {
+      assetId: params.assetId,
+      priceDate: prevDate,
+      close: new Prisma.Decimal(params.previousClose),
+      previousClose: null,
+      currency: params.currency,
+      source: params.source,
+      dataQuality: "END_OF_DAY",
+      isDelayed: true,
+      fetchedAt: params.fetchedAt,
+    },
+  });
 }
 
 export async function syncMarketData(options?: {
@@ -108,6 +144,16 @@ export async function syncMarketData(options?: {
                 fetchedAt: quote.fetchedAt,
               },
             });
+            if (quote.previousPrice) {
+              await ensurePreviousDayFundPrice({
+                assetId: asset.id,
+                currency: asset.currency,
+                priceDate,
+                previousClose: quote.previousPrice,
+                source: quote.source,
+                fetchedAt: quote.fetchedAt,
+              });
+            }
             processed += 1;
           } catch (err) {
             const msg = err instanceof Error ? err.message : "TEFAS hatası";

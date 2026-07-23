@@ -88,6 +88,21 @@ export function addUtcDays(date: Date, days: number): Date {
   return next;
 }
 
+/**
+ * Önceki hafta içi gün (Cumartesi/Pazar atlanır).
+ * Fon previousClose satırını yazmak için — resmi tatilleri bilmez.
+ */
+export function previousWeekday(date: Date): Date {
+  let d = addUtcDays(marketDateOnly(date), -1);
+  // 0=Pazar … 6=Cumartesi (UTC günü = İstanbul takvim günü, Date UTC midnight)
+  let dow = d.getUTCDay();
+  while (dow === 0 || dow === 6) {
+    d = addUtcDays(d, -1);
+    dow = d.getUTCDay();
+  }
+  return d;
+}
+
 export function periodRanges(asOf: Date = new Date()) {
   const today = marketDateOnly(asOf);
   // periodRanges içindeki subDays date-fns yerel TZ kullanır;
