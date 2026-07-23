@@ -50,6 +50,8 @@ export const contributionRule: InsightRule = {
         .minus(rangeSnaps[0]!.totalMarketValue)
         .div(rangeSnaps[0]!.totalMarketValue);
 
+    const cumulativeReturn = context.snapshots.at(-1)?.cumulativeReturn ?? null;
+
     const inputs = latestPositions
       .filter((p) => p.dailyReturn !== null && p.portfolioWeight !== null)
       .map((p) => ({
@@ -81,13 +83,18 @@ export const contributionRule: InsightRule = {
       return [];
     }
 
+    const cumText =
+      cumulativeReturn != null
+        ? ` Yatırılan sermayeye göre kümülatif getiri ${formatPercent(cumulativeReturn)}.`
+        : "";
+
     const insights: GeneratedInsight[] = [
       {
         category: "CONTRIBUTION",
         severity: top.contributionPoints.gt(0) ? "POSITIVE" : "INFO",
         title: "En yüksek katkı",
         message: appendDisclaimer(
-          `Son dönemde en yüksek getiri katkısını ${top.symbol} sağladı (ağırlık ${formatPercent(top.weight)}, varlık getirisi ${formatPercent(top.assetReturn)}). Portföy dönem getirisi yaklaşık ${formatPercent(periodReturn)}.`
+          `Bugünkü getiriye en yüksek katkıyı ${top.symbol} sağladı (ağırlık ${formatPercent(top.weight)}, günlük getiri ${formatPercent(top.assetReturn)}). Son ${LOOKBACK_DAYS} günlük değer değişimi ${formatPercent(periodReturn)}.${cumText}`
         ),
         fingerprint: `contribution:top:${monthKey(context.asOf)}`,
         periodType: "WEEKLY",
@@ -96,6 +103,8 @@ export const contributionRule: InsightRule = {
           topSymbol: top.symbol,
           contributionPoints: top.contributionPoints.toString(),
           lookbackDays: LOOKBACK_DAYS,
+          periodReturn: periodReturn.toString(),
+          cumulativeReturn: cumulativeReturn?.toString() ?? null,
         },
       },
     ];
@@ -110,7 +119,7 @@ export const contributionRule: InsightRule = {
         severity: "WARNING",
         title: "En düşük katkı",
         message: appendDisclaimer(
-          `${worst.symbol} portföy getirisine olumsuz katkı sağladı (${formatPercent(worst.contributionPoints)} etki).`
+          `${worst.symbol} bugünkü portföy getirisine olumsuz katkı sağladı (${formatPercent(worst.contributionPoints)} etki).`
         ),
         fingerprint: `contribution:worst:${monthKey(context.asOf)}`,
         periodType: "WEEKLY",
