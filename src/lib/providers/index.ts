@@ -1,4 +1,4 @@
-import { TwelveDataProvider } from "./twelve-data";
+import { CompositeStockProvider } from "./composite-stock";
 import { DemoFundProvider, TefasFundProvider } from "./tefas";
 import {
   TcmbEvdsFxProvider,
@@ -16,9 +16,12 @@ export * from "./types";
 export * from "./twelve-data";
 export * from "./tefas";
 export * from "./tcmb-evds";
+export * from "./yahoo-finance";
+export * from "./composite-stock";
 
 export function getStockProvider(): MarketDataProvider {
-  return new TwelveDataProvider();
+  // Twelve Data öncelikli; BIST için ücretsiz planda Yahoo Finance fallback
+  return new CompositeStockProvider();
 }
 
 export function getFundProvider(): FundDataProvider {
@@ -48,8 +51,17 @@ export function getProviderStatus() {
   const fx = getFxProvider();
   const inflation = getInflationProvider();
 
+  const twelveConfigured = Boolean(process.env.TWELVE_DATA_API_KEY?.trim());
   return {
     twelveData: {
+      configured: twelveConfigured,
+      name: "twelve_data",
+    },
+    yahooFinance: {
+      configured: true,
+      name: "yahoo_finance",
+    },
+    stock: {
       configured: stock.isConfigured(),
       name: stock.name,
     },
@@ -65,6 +77,6 @@ export function getProviderStatus() {
       configured: inflation.isConfigured(),
       name: inflation.name,
     },
-    demoMode: process.env.DEMO_MODE === "true" || !stock.isConfigured(),
+    demoMode: process.env.DEMO_MODE === "true" && !twelveConfigured,
   };
 }

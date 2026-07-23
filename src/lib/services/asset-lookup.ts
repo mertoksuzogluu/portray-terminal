@@ -1,5 +1,9 @@
 import type { AssetType } from "@prisma/client";
 import { getFundProvider } from "@/lib/providers";
+import {
+  YahooFinanceProvider,
+  toYahooBistSymbol,
+} from "@/lib/providers/yahoo-finance";
 
 /**
  * Kullanıcının ekleme ekranında seçtiği kategoriler.
@@ -52,6 +56,26 @@ interface TwelveQuoteRaw {
   message?: string;
 }
 
+function explainTwelveError(message: string, providerSymbol: string): string {
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("not available") ||
+    lower.includes("plan") ||
+    lower.includes("subscribe") ||
+    lower.includes("permission") ||
+    lower.includes("upgrade")
+  ) {
+    return (
+      `Twelve Data ücretsiz planı BIST/Türkiye verisini kapsamaz (${providerSymbol}). ` +
+      `Grow planı gerekir; uygulama Yahoo Finance ile devam etmeyi dener.`
+    );
+  }
+  if (lower.includes("api credits") || lower.includes("run out") || lower.includes("limit")) {
+    return `Twelve Data kota/limit aşıldı (${providerSymbol}).`;
+  }
+  return message || `Sembol bulunamadı: ${providerSymbol}`;
+}
+
 async function fetchTwelveQuote(providerSymbol: string): Promise<TwelveQuoteRaw> {
   const apiKey = process.env.TWELVE_DATA_API_KEY?.trim();
   if (!apiKey) {
@@ -70,12 +94,36 @@ async function fetchTwelveQuote(providerSymbol: string): Promise<TwelveQuoteRaw>
   }
   const data = (await res.json()) as TwelveQuoteRaw;
   if (data.status === "error" || (data.code && data.code >= 400)) {
-    throw new Error(data.message ?? `Sembol bulunamadı: ${providerSymbol}`);
+    throw new Error(
+      explainTwelveError(data.message ?? "", providerSymbol)
+    );
   }
   if (!data.close) {
     throw new Error(`Fiyat alınamadı: ${providerSymbol}`);
   }
   return data;
+}
+
+async function lookupBistViaYahoo(code: string): Promise<AssetLookupResult> {
+  const providerSymbol = toYahooBistSymbol(code);
+  const yahoo = new YahooFinanceProvider();
+  const { quote, name, exchange } = await yahoo.lookupQuote(providerSymbol);
+  return {
+    symbol: code.replace(/\.IS$/i, ""),
+    name,
+    assetType: "STOCK",
+    category: "BIST",
+    exchange: exchange.includes("Istanbul") || exchange === "IST" ? "BIST" : exchange || "BIST",
+    currency: quote.currency || "TRY",
+    provider: "yahoo_finance",
+    providerSymbol,
+    tefasCode: null,
+    isin: null,
+    price: quote.price,
+    priceDate: quote.asOf.toISOString(),
+    previousClose: quote.previousClose,
+    dataQuality: quote.dataQuality,
+  };
 }
 
 /** USDTRY → USD/TRY, BTCUSD → BTC/USD gibi parite formatına çevirir. */
@@ -114,43 +162,83 @@ export async function lookupAsset(
 
   if (category === "BIST") {
     const providerSymbol = `${code.replace(/\.IS$/i, "")}.IS`;
-    const q = await fetchTwelveQuote(providerSymbol);
-    return {
-      symbol: code.replace(/\.IS$/i, ""),
-      name: q.name || code,
-      assetType: "STOCK",
-      category,
-      exchange: q.exchange || "BIST",
-      currency: q.currency || "TRY",
-      provider: "twelve_data",
-      providerSymbol,
-      tefasCode: null,
-      isin: null,
-      price: q.close ?? null,
-      priceDate: q.datetime ?? null,
-      previousClose: q.previous_close ?? null,
-      dataQuality: "DELAYED",
-    };
+    // Twelve Data ücretsiz planda BIST yok → Yahoo Finance birincil / fallback
+    if (process.env.TWELVE_DATA_API_KEY?.trim()) {
+      try {
+        const q = await fetchTwelveQuote(providerSymbol);
+        return {
+          symbol: code.replace(/\.IS$/i, ""),
+          name: q.name || code,
+          assetType: "STOCK",
+          category,
+          exchange: q.exchange || "BIST",
+          currency: q.currency || "TRY",
+          provider: "twelve_data",
+          providerSymbol,
+          tefasCode: null,
+          isin: null,
+          price: q.close ?? null,
+          priceDate: q.datetime ?? null,
+          previousClose: q.previous_close ?? null,
+          dataQuality: "DELAYED",
+        };
+      } catch {
+        // plan / kota / sembol → Yahoo
+      }
+    }
+    try {
+      return await lookupBistViaYahoo(code);
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : `BIST sembolü bulunamadı: ${code}`
+      );
+    }
   }
 
   if (category === "US") {
     const providerSymbol = code;
-    const q = await fetchTwelveQuote(providerSymbol);
+    if (process.env.TWELVE_DATA_API_KEY?.trim()) {
+      try {
+        const q = await fetchTwelveQuote(providerSymbol);
+        return {
+          symbol: code,
+          name: q.name || code,
+          assetType: "STOCK",
+          category,
+          exchange: q.exchange || "NASDAQ",
+          currency: q.currency || "USD",
+          provider: "twelve_data",
+          providerSymbol,
+          tefasCode: null,
+          isin: null,
+          price: q.close ?? null,
+          priceDate: q.datetime ?? null,
+          previousClose: q.previous_close ?? null,
+          dataQuality: "DELAYED",
+        };
+      } catch {
+        // Twelve başarısızsa Yahoo dene
+      }
+    }
+    const yahoo = new YahooFinanceProvider();
+    const { quote, name, exchange } = await yahoo.lookupQuote(providerSymbol);
     return {
       symbol: code,
-      name: q.name || code,
+      name,
       assetType: "STOCK",
       category,
-      exchange: q.exchange || "NASDAQ",
-      currency: q.currency || "USD",
-      provider: "twelve_data",
+      exchange: exchange || "NASDAQ",
+      currency: quote.currency || "USD",
+      provider: "yahoo_finance",
       providerSymbol,
       tefasCode: null,
       isin: null,
-      price: q.close ?? null,
-      priceDate: q.datetime ?? null,
-      previousClose: q.previous_close ?? null,
-      dataQuality: "DELAYED",
+      price: quote.price,
+      priceDate: quote.asOf.toISOString(),
+      previousClose: quote.previousClose,
+      dataQuality: quote.dataQuality,
     };
   }
 

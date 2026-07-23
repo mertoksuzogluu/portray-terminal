@@ -116,7 +116,17 @@ export class TwelveDataProvider implements MarketDataProvider {
       }
       const data = (await res.json()) as TwelveQuoteResponse;
       if (data.status === "error" || data.code === 429) {
-        const err = new Error(data.message ?? "Twelve Data hatası");
+        const raw = data.message ?? "Twelve Data hatası";
+        const lower = raw.toLowerCase();
+        const msg =
+          providerSymbol.endsWith(".IS") &&
+          (lower.includes("not available") ||
+            lower.includes("plan") ||
+            lower.includes("subscribe") ||
+            lower.includes("permission"))
+            ? `Twelve Data ücretsiz planı BIST verisini kapsamaz (${providerSymbol}). Grow planı veya Yahoo Finance fallback gerekir.`
+            : raw;
+        const err = new Error(msg);
         Object.assign(err, { status: data.code });
         throw err;
       }

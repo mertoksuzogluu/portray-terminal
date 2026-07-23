@@ -169,8 +169,15 @@ export async function syncMarketData(options?: {
           asset.assetType === "GOLD" ||
           asset.assetType === "FX"
         ) {
+          // FX / altın yalnızca Twelve Data; hisse için Yahoo fallback var
+          const needsTwelve =
+            asset.assetType === "GOLD" ||
+            asset.assetType === "FX" ||
+            (asset.providerSymbol?.includes("/") ?? false);
+          if (needsTwelve && !process.env.TWELVE_DATA_API_KEY?.trim()) {
+            continue;
+          }
           if (!stockProvider.isConfigured()) {
-            // Demo mod — mevcut fiyatları bozma
             continue;
           }
 

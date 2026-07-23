@@ -99,7 +99,7 @@ x-cron-secret: <CRON_SECRET>
 ## Veri kaynakları
 
 ### Twelve Data
-BIST hisseleri, USD/TRY, EUR/TRY ve altın fiyatları. API anahtarı yoksa uygulama mevcut/seed fiyatlarını kullanır; canlı senkronizasyon atlanır.
+BIST hisseleri, USD/TRY, EUR/TRY ve altın fiyatları. **Ücretsiz (Basic) plan Türkiye/BIST borsasını kapsamaz** (Grow+ gerekir). Anahtar yoksa veya plan BIST’i desteklemiyorsa uygulama **Yahoo Finance** ile BIST/ABD hisse fiyatlarını çeker; FX/altın için Twelve Data anahtarı gerekir.
 
 ### TEFAS
 Para piyasası ve yatırım fonları (ör. PBR). `tefasCode` alanı ile eşleştirilir.
