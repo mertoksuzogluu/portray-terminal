@@ -21,6 +21,10 @@
       "schedule": "0 7 * * *"
     },
     {
+      "path": "/api/cron/generate-monthly-ai-report",
+      "schedule": "0 8 * * *"
+    },
+    {
       "path": "/api/cron/refresh-market-watch",
       "schedule": "0 5 * * 1"
     },

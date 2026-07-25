@@ -87,6 +87,7 @@ Vercel'e deploy için `vercel.json` günlük cron görevlerini tanımlar:
 | Piyasa senkronizasyonu | 06:00 | `/api/cron/sync-market-data` |
 | Snapshot oluşturma | 06:30 | `/api/cron/create-snapshots` |
 | Rapor üretimi | 07:00 | `/api/cron/generate-reports` |
+| AI Analist (aylık) | 08:00 günlük kontrol; ayın 30’u (kısa aylarda son gün) üretir | `/api/cron/generate-monthly-ai-report` |
 
 Cron istekleri şu header'lardan biriyle korunur:
 

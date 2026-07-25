@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 import {
   ArrowLeftRight,
   Bell,
+  Brain,
   Briefcase,
   CandlestickChart,
-  FileText,
   GitCompare,
   LayoutDashboard,
   Lightbulb,
@@ -32,7 +32,7 @@ const ICONS = {
   LineChart,
   Scale,
   GitCompare,
-  FileText,
+  Brain,
   Bell,
   Settings,
 } as const;
