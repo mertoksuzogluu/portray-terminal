@@ -1,13 +1,64 @@
 import { prisma } from "@/lib/db/prisma";
 import { d } from "@/lib/calculations/decimal";
 import { calculateRealReturn } from "@/lib/calculations/inflation";
+import {
+  adjustPnlByHurdle,
+  annualToMonthlyRate,
+} from "@/lib/calculations/monthly-hurdle";
+import { periodReturnFromValues } from "@/lib/calculations/returns";
 import { getPortfolioSnapshots, requirePortfolioContext } from "@/lib/api/portfolio-context";
 import { jsonError, jsonOk } from "@/lib/api/response";
-import { toDateKey } from "@/lib/utils/dates";
+import { periodRanges, toDateKey } from "@/lib/utils/dates";
+
+async function usdMonthlyChange(
+  monthStart: Date,
+  monthEnd: Date
+): Promise<{ rate: number | null; start: number | null; end: number | null }> {
+  const benchmark = await prisma.benchmark.findUnique({
+    where: { symbol: "USDTRY" },
+    select: { id: true },
+  });
+  if (!benchmark) {
+    return { rate: null, start: null, end: null };
+  }
+
+  const [startRow, endRow] = await Promise.all([
+    prisma.benchmarkPrice.findFirst({
+      where: {
+        benchmarkId: benchmark.id,
+        priceDate: { gte: monthStart, lte: monthEnd },
+      },
+      orderBy: { priceDate: "asc" },
+    }),
+    prisma.benchmarkPrice.findFirst({
+      where: {
+        benchmarkId: benchmark.id,
+        priceDate: { gte: monthStart, lte: monthEnd },
+      },
+      orderBy: { priceDate: "desc" },
+    }),
+  ]);
+
+  if (!startRow || !endRow) {
+    return { rate: null, start: null, end: null };
+  }
+
+  const start = Number(startRow.value.toString());
+  const end = Number(endRow.value.toString());
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start <= 0) {
+    return { rate: null, start, end };
+  }
+
+  return {
+    rate: end / start - 1,
+    start,
+    end,
+  };
+}
 
 export async function GET() {
   try {
-    const { portfolioId } = await requirePortfolioContext();
+    const { user, portfolioId } = await requirePortfolioContext();
     const [snapshots, inflation] = await Promise.all([
       getPortfolioSnapshots(portfolioId, 730),
       prisma.inflationIndex.findMany({
@@ -40,7 +91,10 @@ export async function GET() {
     });
 
     const latest = snapshots.at(-1);
-    let computedReal: { realReturn: number | null; inflationAdjustedCapital: number | null } = {
+    let computedReal: {
+      realReturn: number | null;
+      inflationAdjustedCapital: number | null;
+    } = {
       realReturn: null,
       inflationAdjustedCapital: null,
     };
@@ -59,6 +113,80 @@ export async function GET() {
     }
 
     const latestInf = inflation.at(-1);
+    const asOf = latest?.snapshotDate ?? new Date();
+    const ranges = periodRanges(asOf);
+    const monthStart = ranges.thisMonth.start;
+    const monthEnd = ranges.thisMonth.end;
+
+    const monthSnaps = snapshots.filter((s) => {
+      const t = s.snapshotDate.getTime();
+      return t >= monthStart.getTime() && t <= monthEnd.getTime();
+    });
+
+    let month: {
+      startDate: string;
+      endDate: string;
+      startValue: number | null;
+      endValue: number | null;
+      nominalPnl: number | null;
+      nominalReturn: number | null;
+    } = {
+      startDate: toDateKey(monthStart),
+      endDate: toDateKey(monthEnd),
+      startValue: null,
+      endValue: null,
+      nominalPnl: null,
+      nominalReturn: null,
+    };
+
+    if (monthSnaps.length >= 1) {
+      const first = monthSnaps[0]!;
+      const last = monthSnaps[monthSnaps.length - 1]!;
+      const startValue = d(first.totalMarketValue.toString());
+      const endValue = d(last.totalMarketValue.toString());
+      const startNet = d(first.netContributions.toString());
+      const endNet = d(last.netContributions.toString());
+      // Dış katkıları ayır: değer değişimi − net katkı değişimi
+      const nominalPnl = endValue.minus(startValue).minus(endNet.minus(startNet));
+      const nominalReturn =
+        monthSnaps.length >= 2
+          ? periodReturnFromValues(startValue, endValue)
+          : null;
+
+      month = {
+        startDate: toDateKey(first.snapshotDate),
+        endDate: toDateKey(last.snapshotDate),
+        startValue: startValue.toNumber(),
+        endValue: endValue.toNumber(),
+        nominalPnl: nominalPnl.toNumber(),
+        nominalReturn: nominalReturn?.toNumber() ?? null,
+      };
+    }
+
+    const inflationRate =
+      latestInf?.monthlyRate != null
+        ? Number(latestInf.monthlyRate.toString())
+        : null;
+    const usd = await usdMonthlyChange(monthStart, monthEnd);
+    const annualDeposit = Number(user.riskFreeRateAnnual);
+    const depositMonthly = annualToMonthlyRate(annualDeposit).toNumber();
+
+    const nominalPnl = month.nominalPnl;
+    const adjusted = {
+      vsInflation:
+        nominalPnl != null && inflationRate != null
+          ? adjustPnlByHurdle(nominalPnl, inflationRate).toNumber()
+          : null,
+      vsUsd:
+        nominalPnl != null && usd.rate != null
+          ? adjustPnlByHurdle(nominalPnl, usd.rate).toNumber()
+          : null,
+      vsDeposit:
+        nominalPnl != null
+          ? adjustPnlByHurdle(nominalPnl, depositMonthly).toNumber()
+          : null,
+    };
+
     const monthlyReal = series.filter((_, i) => i % 22 === 0);
 
     return jsonOk({
@@ -69,17 +197,31 @@ export async function GET() {
         realReturn: latest?.realReturn
           ? Number(latest.realReturn.toString())
           : computedReal.realReturn,
-        inflationAdjustedCapital:
-          latest?.inflationAdjustedCapital
-            ? Number(latest.inflationAdjustedCapital.toString())
-            : computedReal.inflationAdjustedCapital,
+        inflationAdjustedCapital: latest?.inflationAdjustedCapital
+          ? Number(latest.inflationAdjustedCapital.toString())
+          : computedReal.inflationAdjustedCapital,
         latestInflationRate: latestInf?.annualRate
           ? Number(latestInf.annualRate.toString())
           : null,
-        latestMonthlyInflation: latestInf?.monthlyRate
-          ? Number(latestInf.monthlyRate.toString())
-          : null,
+        latestMonthlyInflation: inflationRate,
         latestPeriod: latestInf?.period ?? null,
+        month,
+        hurdles: {
+          inflation: {
+            period: latestInf?.period ?? null,
+            rate: inflationRate,
+          },
+          usd: {
+            rate: usd.rate,
+            start: usd.start,
+            end: usd.end,
+          },
+          deposit: {
+            annualRate: annualDeposit,
+            monthlyRate: depositMonthly,
+          },
+        },
+        adjusted,
       },
       series,
       monthlyReal,

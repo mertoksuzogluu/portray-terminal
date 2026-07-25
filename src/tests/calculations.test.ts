@@ -26,6 +26,10 @@ import {
   inflationAdjustedCapital,
 } from "@/lib/calculations/inflation";
 import {
+  adjustPnlByHurdle,
+  annualToMonthlyRate,
+} from "@/lib/calculations/monthly-hurdle";
+import {
   annualizedVolatility,
   calculateDrawdown,
   concentrationAnalysis,
@@ -248,6 +252,18 @@ describe("inflation & real return", () => {
     expect(toNumber(result.realReturn!)).toBeLessThan(
       toNumber(result.currentValue.minus(result.nominalContributions).div(result.nominalContributions))
     );
+  });
+});
+
+describe("monthly hurdle adjustments", () => {
+  it("deflates monthly pnl by hurdle rate: 100000 at 3% → 97000", () => {
+    closeTo(toNumber(adjustPnlByHurdle(100_000, 0.03), 2), 97_000, 0.01);
+  });
+
+  it("converts annual risk-free rate to monthly effective rate", () => {
+    const monthly = annualToMonthlyRate(0.45);
+    // (1.45)^(1/12) - 1 ≈ 0.0314
+    closeTo(toNumber(monthly, 4), 0.0314, 0.0005);
   });
 });
 

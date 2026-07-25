@@ -100,6 +100,22 @@ realReturn = realProfit / inflationAdjustedCapital
 
 `purchasingPowerGap = inflationAdjustedCapital − nominalContributions` nominal ile reel sermaye farkını gösterir.
 
+### Aylık hurdle kıyası (Reel Getiri sayfası)
+
+Bu ayki nominal kâr (`nominalPnl` = değer değişimi − net katkı değişimi) üç aylık orana göre düşürülür:
+
+```
+adjustedPnl = nominalPnl × (1 − monthlyHurdleRate)
+```
+
+Örnek: `100_000 × (1 − 0.03) = 97_000`.
+
+| Hurdle | Kaynak |
+|--------|--------|
+| Enflasyon | Son yayımlanan TÜFE `monthlyRate` |
+| Dolar | Ay içi USD/TRY değişimi (`end/start − 1`) |
+| Vadeli mevduat | Ayarlardaki yıllık risksiz faiz → `(1+r)^(1/12) − 1` |
+
 ## 5. Risk metrikleri
 
 Tüm günlük getiri serileri TWR veya basit günlük getiriden türetilir.

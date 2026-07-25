@@ -28,6 +28,24 @@ interface RealReturnData {
     latestInflationRate: number | null;
     latestMonthlyInflation: number | null;
     latestPeriod: string | null;
+    month: {
+      startDate: string;
+      endDate: string;
+      startValue: number | null;
+      endValue: number | null;
+      nominalPnl: number | null;
+      nominalReturn: number | null;
+    };
+    hurdles: {
+      inflation: { period: string | null; rate: number | null };
+      usd: { rate: number | null; start: number | null; end: number | null };
+      deposit: { annualRate: number; monthlyRate: number };
+    };
+    adjusted: {
+      vsInflation: number | null;
+      vsUsd: number | null;
+      vsDeposit: number | null;
+    };
   };
   series: {
     date: string;
@@ -103,6 +121,7 @@ export default function RealReturnPage() {
     );
   }
 
+  const { month, hurdles, adjusted } = data.summary;
   const chartData = data.series.map((s) => ({
     date: s.date,
     nominal: s.nominalReturn != null ? s.nominalReturn * 100 : null,
@@ -115,9 +134,9 @@ export default function RealReturnPage() {
         <div>
           <h1 className="font-display text-2xl tracking-tight">Reel Getiri</h1>
           <p className="text-sm text-muted-foreground">
-            Enflasyon düzeltmeli portföy performansı (TÜFE)
-            {data.summary.latestPeriod
-              ? ` · Son dönem: ${data.summary.latestPeriod}`
+            Bu ayki portföy kârı; enflasyon, dolar ve vadeli mevduata göre
+            {month.startDate && month.endDate
+              ? ` · ${month.startDate} → ${month.endDate}`
               : ""}
           </p>
         </div>
@@ -142,9 +161,64 @@ export default function RealReturnPage() {
         </Card>
       )}
 
+      <Card>
+        <CardHeader className="pb-2">
+          <CardDescription>Bu ay nominal getiri</CardDescription>
+          <CardTitle className="text-2xl tabular-nums">
+            {month.nominalPnl != null ? (
+              <PnlValue value={month.nominalPnl} type="money" />
+            ) : (
+              "—"
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          {month.nominalReturn != null ? (
+            <>
+              Oran:{" "}
+              <PnlValue value={month.nominalReturn * 100} type="percent" />
+            </>
+          ) : (
+            "Bu ay için yeterli snapshot yok"
+          )}
+          <span className="mt-1 block text-xs">
+            Formül: ayarlanmış kâr = nominal × (1 − aylık hurdle)
+          </span>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <HurdleCard
+          title="Enflasyona göre"
+          subtitle={
+            hurdles.inflation.period && hurdles.inflation.rate != null
+              ? `TÜFE ${hurdles.inflation.period} · ${formatPercentPlain(hurdles.inflation.rate * 100, 2, false)}`
+              : "TÜFE oranı yok"
+          }
+          adjusted={adjusted.vsInflation}
+          hurdleRate={hurdles.inflation.rate}
+        />
+        <HurdleCard
+          title="Dolara göre"
+          subtitle={
+            hurdles.usd.rate != null
+              ? `USD/TRY bu ay · ${formatPercentPlain(hurdles.usd.rate * 100, 2, false)}`
+              : "USD/TRY verisi yok"
+          }
+          adjusted={adjusted.vsUsd}
+          hurdleRate={hurdles.usd.rate}
+        />
+        <HurdleCard
+          title="Vadeli mevduata göre"
+          subtitle={`Yıllık ${formatPercentPlain(hurdles.deposit.annualRate * 100, 1, false)} → aylık ${formatPercentPlain(hurdles.deposit.monthlyRate * 100, 2, false)}`}
+          adjusted={adjusted.vsDeposit}
+          hurdleRate={hurdles.deposit.monthlyRate}
+        />
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          title="Nominal Getiri"
+          title="Kümülatif Nominal"
           value={
             data.summary.nominalReturn != null ? (
               <PnlValue value={data.summary.nominalReturn * 100} type="percent" />
@@ -154,7 +228,7 @@ export default function RealReturnPage() {
           }
         />
         <MetricCard
-          title="Reel Getiri"
+          title="Kümülatif Reel (TÜFE)"
           value={
             data.summary.realReturn != null ? (
               <PnlValue value={data.summary.realReturn * 100} type="percent" />
@@ -172,16 +246,15 @@ export default function RealReturnPage() {
           }
         />
         <MetricCard
-          title="Aylık Enflasyon Maliyeti"
+          title="Son Aylık TÜFE"
           value={
-            data.summary.latestMonthlyInflation != null ? (
-              <PnlValue
-                value={-Math.abs(data.summary.latestMonthlyInflation) * 100}
-                type="percent"
-              />
-            ) : (
-              "—"
-            )
+            data.summary.latestMonthlyInflation != null
+              ? formatPercentPlain(
+                  data.summary.latestMonthlyInflation * 100,
+                  2,
+                  false
+                )
+              : "—"
           }
         />
       </div>
@@ -190,7 +263,7 @@ export default function RealReturnPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Nominal vs Reel Getiri</CardTitle>
-            <CardDescription>Yüzde bazında karşılaştırma</CardDescription>
+            <CardDescription>Kümülatif yüzde karşılaştırma</CardDescription>
           </CardHeader>
           <CardContent>
             {chartData.length === 0 ? (
@@ -264,9 +337,7 @@ export default function RealReturnPage() {
                   <tr className="border-b border-border text-left text-xs text-muted-foreground">
                     <th className="pb-2 pr-2 font-medium">Dönem</th>
                     <th className="pb-2 pr-2 font-medium text-right">Endeks</th>
-                    <th className="pb-2 pr-2 font-medium text-right">
-                      Aylık maliyet
-                    </th>
+                    <th className="pb-2 pr-2 font-medium text-right">Aylık</th>
                     <th className="pb-2 font-medium text-right">Yıllık</th>
                   </tr>
                 </thead>
@@ -282,13 +353,9 @@ export default function RealReturnPage() {
                           maximumFractionDigits: 2,
                         })}
                       </td>
-                      <td className="py-2 pr-2 text-right tabular-nums text-negative">
+                      <td className="py-2 pr-2 text-right tabular-nums">
                         {row.monthlyRate != null
-                          ? formatPercentPlain(
-                              -Math.abs(row.monthlyRate) * 100,
-                              2,
-                              false
-                            )
+                          ? formatPercentPlain(row.monthlyRate * 100, 2, false)
                           : "—"}
                       </td>
                       <td className="py-2 text-right tabular-nums">
@@ -305,6 +372,41 @@ export default function RealReturnPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function HurdleCard({
+  title,
+  subtitle,
+  adjusted,
+  hurdleRate,
+}: {
+  title: string;
+  subtitle: string;
+  adjusted: number | null;
+  hurdleRate: number | null;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-xl tabular-nums">
+          {adjusted != null ? (
+            <PnlValue value={adjusted} type="money" />
+          ) : (
+            "—"
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-1 text-sm text-muted-foreground">
+        <p>{subtitle}</p>
+        {hurdleRate != null && (
+          <p className="text-xs">
+            Hurdle: {formatPercentPlain(hurdleRate * 100, 2, false)}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

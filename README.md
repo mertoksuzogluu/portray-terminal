@@ -10,7 +10,7 @@ Türk yatırımcılar için kişisel portföy takip ve analiz uygulaması. Hisse
 - İşlem defteri: alış, satış, temettü, nakit giriş/çıkış
 - Günlük snapshot'lar ve pozisyon takibi
 - TWR (Time-Weighted Return) ve XIRR (Money-Weighted Return)
-- TÜFE bazlı reel getiri hesabı
+- Reel getiri: bu ayki kârı TÜFE, USD/TRY ve vadeli mevduat hurdle’ına göre ayarlar (`kâr × (1 − oran)`)
 - BIST 100, USD/TRY, EUR/TRY, gram altın kıyaslamaları
 - Uyarı kuralları ve otomatik analiz içgörüleri
 - CSV ile toplu işlem içe aktarma
@@ -113,7 +113,7 @@ Aylık TÜFE endeks değerleri enflasyon düzeltmesi için kullanılır. API ana
 |--------|----------|
 | **TWR** | Dış nakit akışlarından arındırılmış günlük zincirleme getiri. Para yatırma/çekme günü Modified Dietz benzeri düzeltme uygulanır. |
 | **XIRR** | Tüm nakit akışları + güncel portföy değeri üzerinden yıllıklandırılmış iç verim oranı (Newton-Raphson + bisection fallback). |
-| **Reel getiri** | Her nakit girişi kendi tarihindeki TÜFE endeksinden bugüne taşınır; reel kâr = güncel değer − enflasyonlu sermaye. |
+| **Reel getiri** | Kümülatif: nakit girişleri TÜFE ile taşınır. Aylık hurdle: `ayarlanmış = nominalPnl × (1 − oran)` (TÜFE / USD / mevduat). |
 
 Detaylı formüller: [`docs/calculation-methodology.md`](docs/calculation-methodology.md)
 
