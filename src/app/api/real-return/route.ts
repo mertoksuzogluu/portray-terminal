@@ -8,7 +8,10 @@ import {
   adjustPnlByHurdle,
   annualToMonthlyRate,
 } from "@/lib/calculations/monthly-hurdle";
-import { periodReturnFromValues } from "@/lib/calculations/returns";
+import {
+  applyProratedMonthlyInflation,
+  endOfPeriod,
+} from "@/lib/calculations/inflation";
 import {
   getPortfolioSnapshots,
   requirePortfolioContext,
@@ -42,6 +45,12 @@ interface PeriodBlock {
   };
 }
 
+/**
+ * Dönem kârı.
+ * - Portföy dönem içinde başlamışsa (öncesi snapshot yok): toplam kâr =
+ *   güncel değer − yatırılan ana para (ilk günün kârı kaçmaz).
+ * - Aksi halde: dönem başı/sonu özsermaye farkı.
+ */
 function computePeriodPnl(
   snapshots: SnapshotRow[],
   start: Date,
@@ -51,43 +60,77 @@ function computePeriodPnl(
   endDate: string;
   startValue: number | null;
   endValue: number | null;
+  investedAtEnd: number | null;
   nominalPnl: number | null;
   nominalReturn: number | null;
 } {
-  const snaps = snapshots.filter((s) => {
+  const snapsInRange = snapshots.filter((s) => {
     const t = s.snapshotDate.getTime();
     return t >= start.getTime() && t <= end.getTime();
   });
 
-  if (snaps.length === 0) {
+  if (snapsInRange.length === 0) {
     return {
       startDate: toDateKey(start),
       endDate: toDateKey(end),
       startValue: null,
       endValue: null,
+      investedAtEnd: null,
       nominalPnl: null,
       nominalReturn: null,
     };
   }
 
-  const first = snaps[0]!;
-  const last = snaps[snaps.length - 1]!;
-  const startValue = d(first.totalMarketValue.toString());
+  const last = snapsInRange[snapsInRange.length - 1]!;
   const endValue = d(last.totalMarketValue.toString());
-  const startNet = d(first.netContributions.toString());
   const endNet = d(last.netContributions.toString());
+
+  const prior = [...snapshots]
+    .reverse()
+    .find((s) => s.snapshotDate.getTime() < start.getTime());
+
+  // İnception bu dönemde → ana paraya göre toplam kâr
+  if (!prior) {
+    const nominalPnl = endValue.minus(endNet);
+    return {
+      startDate: toDateKey(snapsInRange[0]!.snapshotDate),
+      endDate: toDateKey(last.snapshotDate),
+      startValue: endNet.toNumber(), // ana para (getirisiz)
+      endValue: endValue.toNumber(),
+      investedAtEnd: endNet.toNumber(),
+      nominalPnl: nominalPnl.toNumber(),
+      nominalReturn: endNet.isZero() ? null : nominalPnl.div(endNet).toNumber(),
+    };
+  }
+
+  const startValue = d(prior.totalMarketValue.toString());
+  const startNet = d(prior.netContributions.toString());
   const nominalPnl = endValue.minus(startValue).minus(endNet.minus(startNet));
-  const nominalReturn =
-    snaps.length >= 2 ? periodReturnFromValues(startValue, endValue) : null;
+  const denom = startValue.isZero() ? endNet : startValue;
+  const nominalReturn = denom.isZero() ? null : nominalPnl.div(denom);
 
   return {
-    startDate: toDateKey(first.snapshotDate),
+    startDate: toDateKey(prior.snapshotDate),
     endDate: toDateKey(last.snapshotDate),
     startValue: startValue.toNumber(),
     endValue: endValue.toNumber(),
+    investedAtEnd: endNet.toNumber(),
     nominalPnl: nominalPnl.toNumber(),
     nominalReturn: nominalReturn?.toNumber() ?? null,
   };
+}
+
+/** Elde tutulan süreye göre yıllık oranı ölçekle: (1+r)^t − 1 */
+function scaleAnnualRate(annualRate: number, years: number): number {
+  if (years <= 0) return 0;
+  return d(1).plus(annualRate).pow(years).minus(1).toNumber();
+}
+
+function daysHeld(start: Date, end: Date): number {
+  return Math.max(
+    0,
+    Math.round((end.getTime() - start.getTime()) / 86_400_000)
+  );
 }
 
 async function usdChange(
@@ -232,7 +275,7 @@ export async function GET() {
     const ranges = periodRanges(asOf);
 
     const firstSnap = snapshots[0] ?? null;
-    const totalStart = firstSnap?.snapshotDate ?? ranges.thisMonth.start;
+    const inception = firstSnap?.snapshotDate ?? ranges.thisMonth.start;
     const totalEnd = asOf;
 
     const monthPnl = computePeriodPnl(
@@ -245,7 +288,7 @@ export async function GET() {
       ranges.last1y.start,
       ranges.last1y.end
     );
-    const totalPnl = computePeriodPnl(snapshots, totalStart, totalEnd);
+    const totalPnl = computePeriodPnl(snapshots, inception, totalEnd);
 
     const inflationMonthly =
       latestInf?.monthlyRate != null
@@ -256,37 +299,83 @@ export async function GET() {
         ? Number(latestInf.annualRate.toString())
         : null;
 
-    // Toplam enflasyon hurdle: ilk katkı ayı → son endeks (+ prorata zaten capital'de)
-    let inflationTotal: number | null = null;
-    if (firstSnap && inflationPoints.length > 0) {
-      const fromPeriod = `${firstSnap.snapshotDate.getUTCFullYear()}-${String(firstSnap.snapshotDate.getUTCMonth() + 1).padStart(2, "0")}`;
-      const toPeriod = latestInf?.period ?? fromPeriod;
+    /**
+     * Elde tutma süresi enflasyon oranı: endeks oranı + son aydan sonraki prorata.
+     * Kısa süreli portföyde tam YoY (%32) uygulanmaz.
+     */
+    function holdingInflationRate(fromDate: Date, toDate: Date): number | null {
+      if (inflationPoints.length === 0) return null;
+      const fromPeriod = `${fromDate.getUTCFullYear()}-${String(fromDate.getUTCMonth() + 1).padStart(2, "0")}`;
+      const latestPeriod = latestInf?.period ?? fromPeriod;
       const fromIdx = findIndexAtPeriod(inflationPoints, fromPeriod);
-      const toIdx = findIndexAtPeriod(inflationPoints, toPeriod);
-      if (fromIdx && toIdx && !fromIdx.isZero()) {
-        inflationTotal = toIdx.div(fromIdx).minus(1).toNumber();
+      const toIdx = findIndexAtPeriod(inflationPoints, latestPeriod);
+      if (!fromIdx || !toIdx || fromIdx.isZero()) return null;
+
+      let factor = toIdx.div(fromIdx);
+      const monthlyRate = latestInf?.monthlyRate
+        ? Number(latestInf.monthlyRate.toString())
+        : null;
+      if (monthlyRate != null && latestPeriod) {
+        const periodEnd = endOfPeriod(latestPeriod);
+        if (toDate.getTime() > periodEnd.getTime()) {
+          const prorataStart =
+            fromDate.getTime() > periodEnd.getTime() ? fromDate : periodEnd;
+          const inflated = applyProratedMonthlyInflation(
+            1,
+            monthlyRate,
+            prorataStart,
+            toDate
+          );
+          factor = factor.times(inflated);
+        }
       }
+      return factor.minus(1).toNumber();
     }
+
+    const yearsTotal = holdingYears(inception, totalEnd);
+    const yearsInYearWindow = holdingYears(
+      inception.getTime() > ranges.last1y.start.getTime()
+        ? inception
+        : ranges.last1y.start,
+      totalEnd
+    );
+    const heldDaysTotal = daysHeld(inception, totalEnd);
+
+    // Yıllık sekme: 1 yıldan kısa elde tutmada tam yıllık hurdle yerine süreye ölçekle
+    const yearWindowStart =
+      inception.getTime() > ranges.last1y.start.getTime()
+        ? inception
+        : ranges.last1y.start;
+    const inflationYear =
+      yearsInYearWindow >= 0.99 && inflationAnnual != null
+        ? inflationAnnual
+        : holdingInflationRate(yearWindowStart, totalEnd);
+    const inflationTotal = holdingInflationRate(inception, totalEnd);
 
     const [usdMonth, usdYear, usdTotal] = await Promise.all([
       usdChange(ranges.thisMonth.start, ranges.thisMonth.end),
-      usdChange(ranges.last1y.start, ranges.last1y.end),
-      usdChange(totalStart, totalEnd),
+      usdChange(yearWindowStart, totalEnd),
+      usdChange(inception, totalEnd),
     ]);
 
     const annualDeposit = Number(user.riskFreeRateAnnual);
     const depositMonthly = annualToMonthlyRate(annualDeposit).toNumber();
-    const yearsHeld = holdingYears(totalStart, totalEnd);
-    const depositTotal =
-      yearsHeld > 0
-        ? d(1).plus(annualDeposit).pow(yearsHeld).minus(1).toNumber()
-        : 0;
+    const depositYear = scaleAnnualRate(
+      annualDeposit,
+      Math.min(1, yearsInYearWindow)
+    );
+    const depositTotal = scaleAnnualRate(annualDeposit, yearsTotal);
 
     const periods: Record<PeriodKey, PeriodBlock> = {
       month: {
         key: "month",
         label: "Aylık",
-        ...monthPnl,
+        startDate: monthPnl.startDate,
+        endDate: monthPnl.endDate,
+        startValue: monthPnl.startValue,
+        endValue: monthPnl.endValue,
+        nominalPnl: monthPnl.nominalPnl,
+        nominalReturn: monthPnl.nominalReturn,
         hurdles: {
           inflation: {
             rate: inflationMonthly,
@@ -313,46 +402,65 @@ export async function GET() {
       year: {
         key: "year",
         label: "Yıllık",
-        ...yearPnl,
+        startDate: yearPnl.startDate,
+        endDate: yearPnl.endDate,
+        startValue: yearPnl.startValue,
+        endValue: yearPnl.endValue,
+        nominalPnl: yearPnl.nominalPnl,
+        nominalReturn: yearPnl.nominalReturn,
         hurdles: {
           inflation: {
-            rate: inflationAnnual,
-            label: latestInf
-              ? `Yıllık TÜFE YoY ${latestInf.period}`
-              : "Yıllık TÜFE YoY",
+            rate: inflationYear,
+            label:
+              yearsInYearWindow >= 0.99
+                ? latestInf
+                  ? `Yıllık TÜFE YoY ${latestInf.period}`
+                  : "Yıllık TÜFE YoY"
+                : `TÜFE (${heldDaysTotal} gün, ölçekli)`,
           },
           usd: {
             rate: usdYear.rate,
-            label: "USD/TRY son 12 ay",
+            label:
+              yearsInYearWindow >= 0.99
+                ? "USD/TRY son 12 ay"
+                : "USD/TRY (elde tutma)",
           },
           deposit: {
-            rate: annualDeposit,
-            label: "Vadeli (yıllık)",
+            rate: depositYear,
+            label:
+              yearsInYearWindow >= 0.99
+                ? "Vadeli (yıllık)"
+                : `Vadeli (${yearsInYearWindow.toFixed(2)} yıl)`,
           },
         },
         adjusted: buildAdjusted(
           yearPnl.nominalPnl,
-          inflationAnnual,
+          inflationYear,
           usdYear.rate,
-          annualDeposit
+          depositYear
         ),
       },
       total: {
         key: "total",
         label: "Toplam",
-        ...totalPnl,
+        startDate: totalPnl.startDate,
+        endDate: totalPnl.endDate,
+        startValue: totalPnl.startValue,
+        endValue: totalPnl.endValue,
+        nominalPnl: totalPnl.nominalPnl,
+        nominalReturn: totalPnl.nominalReturn,
         hurdles: {
           inflation: {
             rate: inflationTotal,
-            label: "TÜFE (dönem başı→son)",
+            label: `TÜFE (başlangıç→bugün, ${heldDaysTotal} gün)`,
           },
           usd: {
             rate: usdTotal.rate,
-            label: "USD/TRY (dönem başı→son)",
+            label: "USD/TRY (başlangıç→bugün)",
           },
           deposit: {
             rate: depositTotal,
-            label: `Vadeli (${yearsHeld.toFixed(2)} yıl bileşik)`,
+            label: `Vadeli (${yearsTotal.toFixed(2)} yıl bileşik)`,
           },
         },
         adjusted: buildAdjusted(
