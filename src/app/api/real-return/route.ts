@@ -133,6 +133,22 @@ function daysHeld(start: Date, end: Date): number {
   );
 }
 
+/** Kaynak önceliği — demo-seed / eski asset-sync (~39) ile twelve_data (~47) karışmasın. */
+const FX_SOURCE_PRIORITY = [
+  "twelve_data_fx",
+  "twelve_data",
+  "tcmb_evds_fx",
+  "tcmb_evds",
+  "carry-forward",
+  "asset-sync",
+] as const;
+
+function fxSourceRank(source: string): number {
+  const idx = (FX_SOURCE_PRIORITY as readonly string[]).indexOf(source);
+  if (source === "demo-seed") return 999;
+  return idx === -1 ? 100 : idx;
+}
+
 async function usdChange(
   rangeStart: Date,
   rangeEnd: Date
@@ -143,27 +159,50 @@ async function usdChange(
   });
   if (!benchmark) return { rate: null, start: null, end: null };
 
-  const [startRow, endRow] = await Promise.all([
-    prisma.benchmarkPrice.findFirst({
-      where: {
-        benchmarkId: benchmark.id,
-        priceDate: { gte: rangeStart, lte: rangeEnd },
-      },
-      orderBy: { priceDate: "asc" },
-    }),
-    prisma.benchmarkPrice.findFirst({
-      where: {
-        benchmarkId: benchmark.id,
-        priceDate: { gte: rangeStart, lte: rangeEnd },
-      },
-      orderBy: { priceDate: "desc" },
-    }),
-  ]);
+  const rows = await prisma.benchmarkPrice.findMany({
+    where: {
+      benchmarkId: benchmark.id,
+      priceDate: { gte: rangeStart, lte: rangeEnd },
+      NOT: { source: "demo-seed" },
+    },
+    orderBy: [{ priceDate: "asc" }, { fetchedAt: "desc" }],
+  });
 
-  if (!startRow || !endRow) return { rate: null, start: null, end: null };
+  if (rows.length === 0) return { rate: null, start: null, end: null };
 
-  const start = Number(startRow.value.toString());
-  const end = Number(endRow.value.toString());
+  // Tercih edilen kaynak ailesi: twelve_data varsa yalnızca onu kullan
+  const hasTwelve = rows.some(
+    (r) =>
+      r.source === "twelve_data_fx" ||
+      r.source === "twelve_data" ||
+      r.source === "carry-forward"
+  );
+  const usable = hasTwelve
+    ? rows.filter(
+        (r) =>
+          r.source === "twelve_data_fx" ||
+          r.source === "twelve_data" ||
+          r.source === "carry-forward"
+      )
+    : rows;
+
+  // Her gün için en iyi kaynağı seç
+  const byDate = new Map<string, { value: number; rank: number }>();
+  for (const row of usable) {
+    const key = toDateKey(row.priceDate);
+    const value = Number(row.value.toString());
+    const rank = fxSourceRank(row.source);
+    const prev = byDate.get(key);
+    if (!prev || rank < prev.rank) {
+      byDate.set(key, { value, rank });
+    }
+  }
+
+  const dates = [...byDate.keys()].sort();
+  if (dates.length === 0) return { rate: null, start: null, end: null };
+
+  const start = byDate.get(dates[0]!)!.value;
+  const end = byDate.get(dates[dates.length - 1]!)!.value;
   if (!Number.isFinite(start) || !Number.isFinite(end) || start <= 0) {
     return { rate: null, start, end };
   }
@@ -290,9 +329,25 @@ export async function GET() {
     );
     const totalPnl = computePeriodPnl(snapshots, inception, totalEnd);
 
-    const inflationMonthly =
+    // Aylık pencere: takvim ayı başı değil, max(ay başı, inception)
+    const monthWindowStart =
+      inception.getTime() > ranges.thisMonth.start.getTime()
+        ? inception
+        : ranges.thisMonth.start;
+    const daysInMonth = new Date(
+      Date.UTC(totalEnd.getUTCFullYear(), totalEnd.getUTCMonth() + 1, 0)
+    ).getUTCDate();
+    const daysHeldMonth = Math.max(1, daysHeld(monthWindowStart, totalEnd));
+    const monthFraction = Math.min(1, daysHeldMonth / daysInMonth);
+
+    const inflationMonthlyRaw =
       latestInf?.monthlyRate != null
         ? Number(latestInf.monthlyRate.toString())
+        : null;
+    // Kısa ay içi elde tutmada tam aylık TÜFE uygulanmaz
+    const inflationMonthly =
+      inflationMonthlyRaw != null
+        ? inflationMonthlyRaw * monthFraction
         : null;
     const inflationAnnual =
       latestInf?.annualRate != null
@@ -353,13 +408,14 @@ export async function GET() {
     const inflationTotal = holdingInflationRate(inception, totalEnd);
 
     const [usdMonth, usdYear, usdTotal] = await Promise.all([
-      usdChange(ranges.thisMonth.start, ranges.thisMonth.end),
+      usdChange(monthWindowStart, totalEnd),
       usdChange(yearWindowStart, totalEnd),
       usdChange(inception, totalEnd),
     ]);
 
     const annualDeposit = Number(user.riskFreeRateAnnual);
-    const depositMonthly = annualToMonthlyRate(annualDeposit).toNumber();
+    const depositMonthlyFull = annualToMonthlyRate(annualDeposit).toNumber();
+    const depositMonthly = depositMonthlyFull * monthFraction;
     const depositYear = scaleAnnualRate(
       annualDeposit,
       Math.min(1, yearsInYearWindow)
@@ -380,16 +436,24 @@ export async function GET() {
           inflation: {
             rate: inflationMonthly,
             label: latestInf
-              ? `Aylık TÜFE ${latestInf.period}`
+              ? monthFraction < 0.999
+                ? `Aylık TÜFE ${latestInf.period} · ${daysHeldMonth}/${daysInMonth} gün`
+                : `Aylık TÜFE ${latestInf.period}`
               : "Aylık TÜFE",
           },
           usd: {
             rate: usdMonth.rate,
-            label: "USD/TRY bu ay",
+            label:
+              monthFraction < 0.999
+                ? "USD/TRY (ay içi elde tutma)"
+                : "USD/TRY bu ay",
           },
           deposit: {
             rate: depositMonthly,
-            label: "Vadeli (aylık efektif)",
+            label:
+              monthFraction < 0.999
+                ? `Vadeli (${daysHeldMonth}/${daysInMonth} gün)`
+                : "Vadeli (aylık efektif)",
           },
         },
         adjusted: buildAdjusted(
@@ -507,14 +571,14 @@ export async function GET() {
             : null),
         realReturnIsEstimated: computedReal.isEstimated,
         latestInflationRate: inflationAnnual,
-        latestMonthlyInflation: inflationMonthly,
+        latestMonthlyInflation: inflationMonthlyRaw,
         latestPeriod: latestInf?.period ?? null,
         month,
         periods,
         hurdles: {
           inflation: {
             period: latestInf?.period ?? null,
-            rate: inflationMonthly,
+            rate: inflationMonthlyRaw,
             annualRate: inflationAnnual,
           },
           usd: {
@@ -524,7 +588,7 @@ export async function GET() {
           },
           deposit: {
             annualRate: annualDeposit,
-            monthlyRate: depositMonthly,
+            monthlyRate: depositMonthlyFull,
           },
         },
         adjusted: periods.month.adjusted,
