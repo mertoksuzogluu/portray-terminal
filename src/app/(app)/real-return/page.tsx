@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Area,
-  AreaChart,
   CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -19,6 +20,30 @@ import { LoadingSkeleton } from "@/components/shared/loading-skeleton";
 import { PnlValue } from "@/components/shared/pnl-value";
 import { clientFetch } from "@/lib/api/client-fetch";
 import { formatMoney, formatPercentPlain } from "@/lib/format/tr";
+import { cn } from "@/lib/utils/cn";
+
+type PeriodKey = "month" | "year" | "total";
+
+interface PeriodBlock {
+  key: PeriodKey;
+  label: string;
+  startDate: string;
+  endDate: string;
+  startValue: number | null;
+  endValue: number | null;
+  nominalPnl: number | null;
+  nominalReturn: number | null;
+  hurdles: {
+    inflation: { rate: number | null; label: string };
+    usd: { rate: number | null; label: string };
+    deposit: { rate: number | null; label: string };
+  };
+  adjusted: {
+    vsInflation: number | null;
+    vsUsd: number | null;
+    vsDeposit: number | null;
+  };
+}
 
 interface RealReturnData {
   summary: {
@@ -31,33 +56,14 @@ interface RealReturnData {
     latestInflationRate: number | null;
     latestMonthlyInflation: number | null;
     latestPeriod: string | null;
-    month: {
-      startDate: string;
-      endDate: string;
-      startValue: number | null;
-      endValue: number | null;
-      nominalPnl: number | null;
-      nominalReturn: number | null;
-    };
-    hurdles: {
-      inflation: {
-        period: string | null;
-        rate: number | null;
-        annualRate?: number | null;
-      };
-      usd: { rate: number | null; start: number | null; end: number | null };
-      deposit: { annualRate: number; monthlyRate: number };
-    };
-    adjusted: {
-      vsInflation: number | null;
-      vsUsd: number | null;
-      vsDeposit: number | null;
-    };
+    periods: Record<PeriodKey, PeriodBlock>;
   };
   series: {
     date: string;
     nominalReturn: number | null;
     realReturn: number | null;
+    nominalPnl?: number | null;
+    realPnl?: number | null;
   }[];
   inflation: {
     period: string;
@@ -69,11 +75,18 @@ interface RealReturnData {
   inflationAvailable: boolean;
 }
 
+const PERIOD_TABS: { key: PeriodKey; label: string }[] = [
+  { key: "month", label: "Aylık Reel Getiri" },
+  { key: "year", label: "Yıllık Reel Getiri" },
+  { key: "total", label: "Toplam Reel Getiri" },
+];
+
 export default function RealReturnPage() {
   const [data, setData] = useState<RealReturnData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [period, setPeriod] = useState<PeriodKey>("month");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,12 +141,24 @@ export default function RealReturnPage() {
     );
   }
 
-  const { month, hurdles, adjusted } = data.summary;
-  const chartData = data.series.map((s) => ({
-    date: s.date,
-    nominal: s.nominalReturn != null ? s.nominalReturn * 100 : null,
-    real: s.realReturn != null ? s.realReturn * 100 : null,
-  }));
+  const active = data.summary.periods?.[period];
+  const chartData = data.series
+    .filter((s) => {
+      if (!active) return true;
+      return s.date >= active.startDate && s.date <= active.endDate;
+    })
+    .filter((s) => s.nominalReturn != null || s.realReturn != null)
+    .map((s) => ({
+      date: s.date,
+      label: formatChartDate(s.date),
+      nominal: s.nominalReturn != null ? s.nominalReturn * 100 : null,
+      real: s.realReturn != null ? s.realReturn * 100 : null,
+      gap:
+        s.nominalReturn != null && s.realReturn != null
+          ? (s.nominalReturn - s.realReturn) * 100
+          : null,
+    }));
+  const latestChart = chartData.at(-1);
 
   return (
     <div className="space-y-6">
@@ -141,9 +166,9 @@ export default function RealReturnPage() {
         <div>
           <h1 className="font-display text-2xl tracking-tight">Reel Getiri</h1>
           <p className="text-sm text-muted-foreground">
-            Bu ayki portföy kârı; enflasyon, dolar ve vadeli mevduata göre
-            {month.startDate && month.endDate
-              ? ` · ${month.startDate} → ${month.endDate}`
+            Getiri; enflasyon, dolar ve vadeli mevduata göre
+            {active
+              ? ` · ${active.startDate} → ${active.endDate}`
               : ""}
           </p>
         </div>
@@ -168,7 +193,22 @@ export default function RealReturnPage() {
         </Card>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="flex flex-wrap gap-2">
+        {PERIOD_TABS.map((tab) => (
+          <Button
+            key={tab.key}
+            type="button"
+            size="sm"
+            variant={period === tab.key ? "default" : "outline"}
+            className={cn(period === tab.key && "shadow-sm")}
+            onClick={() => setPeriod(tab.key)}
+          >
+            {tab.label}
+          </Button>
+        ))}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Ana para</CardDescription>
@@ -193,86 +233,89 @@ export default function RealReturnPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Bu ay nominal getiri</CardDescription>
+            <CardDescription>
+              {active?.label ?? "Dönem"} toplam getiri
+            </CardDescription>
             <CardTitle className="text-2xl tabular-nums">
-              {month.nominalPnl != null ? (
-                <PnlValue value={month.nominalPnl} type="money" />
+              {active?.nominalPnl != null ? (
+                <PnlValue value={active.nominalPnl} type="money" />
               ) : (
                 "—"
               )}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            {month.nominalReturn != null ? (
+            {active?.nominalReturn != null ? (
               <>
                 Oran:{" "}
-                <PnlValue value={month.nominalReturn * 100} type="percent" />
+                <PnlValue value={active.nominalReturn * 100} type="percent" />
               </>
             ) : (
-              "Bu ay için yeterli snapshot yok"
+              "Bu dönem için yeterli snapshot yok"
             )}
             <span className="mt-1 block text-xs">
-              Formül: ayarlanmış kâr = nominal × (1 − aylık hurdle)
+              Nominal kâr (dış katkı hariç)
             </span>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Formül</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">
+              Reel getiri = toplam getiri × (1 − hurdle)
+            </p>
+            <p className="mt-2 text-xs">
+              Üç hurdle: TÜFE, USD/TRY, vadeli mevduat. Seçilen döneme göre oran
+              değişir (aylık / yıllık YoY / dönem başı→son).
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      <Card className="border-border/80 bg-muted/30">
-        <CardContent className="space-y-1 py-4 text-sm text-muted-foreground">
-          <p>
-            <span className="font-medium text-foreground">Aylık TÜFE</span> =
-            bir ayın fiyat artışı
-            {data.summary.latestPeriod && data.summary.latestMonthlyInflation != null
-              ? ` (${data.summary.latestPeriod}: ${formatPercentPlain(data.summary.latestMonthlyInflation * 100, 2, false)})`
-              : ""}
-            . Bu, aylık kâr hurdle’ıdır —{" "}
-            <span className="font-medium text-foreground">yıllık × 1/12 değil</span>.
-          </p>
-          <p>
-            <span className="font-medium text-foreground">Yıllık TÜFE (YoY)</span> =
-            son 12 ayın kümülatifi
-            {data.summary.latestInflationRate != null
-              ? ` (${formatPercentPlain(data.summary.latestInflationRate * 100, 1, false)})`
-              : ""}
-            . Aylık %0,99 × 12 ≈ %12 olsa da gerçek yıllık, önceki yüksek aylar
-            yüzünden daha yüksektir.
-          </p>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <HurdleCard
-          title="Enflasyona göre"
-          subtitle={
-            hurdles.inflation.period && hurdles.inflation.rate != null
-              ? `Aylık TÜFE ${hurdles.inflation.period} · ${formatPercentPlain(hurdles.inflation.rate * 100, 2, false)}${
-                  hurdles.inflation.annualRate != null
-                    ? ` · yıllık YoY ${formatPercentPlain(hurdles.inflation.annualRate * 100, 1, false)}`
-                    : ""
-                }`
-              : "TÜFE oranı yok"
-          }
-          adjusted={adjusted.vsInflation}
-          hurdleRate={hurdles.inflation.rate}
-        />
-        <HurdleCard
-          title="Dolara göre"
-          subtitle={
-            hurdles.usd.rate != null
-              ? `USD/TRY bu ay · ${formatPercentPlain(hurdles.usd.rate * 100, 2, false)}`
-              : "USD/TRY verisi yok"
-          }
-          adjusted={adjusted.vsUsd}
-          hurdleRate={hurdles.usd.rate}
-        />
-        <HurdleCard
-          title="Vadeli mevduata göre"
-          subtitle={`Yıllık ${formatPercentPlain(hurdles.deposit.annualRate * 100, 1, false)} → aylık ${formatPercentPlain(hurdles.deposit.monthlyRate * 100, 2, false)}`}
-          adjusted={adjusted.vsDeposit}
-          hurdleRate={hurdles.deposit.monthlyRate}
-        />
-      </div>
+      {active && (
+        <>
+          <div>
+            <h2 className="mb-3 font-display text-lg tracking-tight">
+              {active.label} reel getiri (3 faktör)
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <HurdleCard
+                title="Enflasyona göre"
+                subtitle={
+                  active.hurdles.inflation.rate != null
+                    ? `${active.hurdles.inflation.label} · ${formatPercentPlain(active.hurdles.inflation.rate * 100, 2, false)}`
+                    : active.hurdles.inflation.label
+                }
+                adjusted={active.adjusted.vsInflation}
+                hurdleRate={active.hurdles.inflation.rate}
+              />
+              <HurdleCard
+                title="Dolara göre"
+                subtitle={
+                  active.hurdles.usd.rate != null
+                    ? `${active.hurdles.usd.label} · ${formatPercentPlain(active.hurdles.usd.rate * 100, 2, false)}`
+                    : active.hurdles.usd.label
+                }
+                adjusted={active.adjusted.vsUsd}
+                hurdleRate={active.hurdles.usd.rate}
+              />
+              <HurdleCard
+                title="Vadeli mevduata göre"
+                subtitle={
+                  active.hurdles.deposit.rate != null
+                    ? `${active.hurdles.deposit.label} · ${formatPercentPlain(active.hurdles.deposit.rate * 100, 2, false)}`
+                    : active.hurdles.deposit.label
+                }
+                adjusted={active.adjusted.vsDeposit}
+                hurdleRate={active.hurdles.deposit.rate}
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
@@ -332,43 +375,99 @@ export default function RealReturnPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Nominal vs Reel Getiri</CardTitle>
-            <CardDescription>Kümülatif yüzde karşılaştırma</CardDescription>
+            <CardDescription>
+              {active?.label ?? "Dönem"} · kümülatif % (TÜFE düzeltmeli reel)
+              {latestChart?.gap != null
+                ? ` · fark ${formatPercentPlain(latestChart.gap, 2, false)}`
+                : ""}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            {chartData.length === 0 ? (
-              <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
+            {chartData.length < 2 ? (
+              <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
                 <Scale className="mr-2 h-4 w-4" />
-                Yeterli veri yok
+                Grafik için bu dönemde en az 2 snapshot gerekir
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} width={48} />
-                  <Tooltip
-                    formatter={(v, name) => [
-                      `${Number(v).toFixed(2)}%`,
-                      name === "nominal" ? "Nominal" : "Reel",
-                    ]}
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart
+                  data={chartData}
+                  margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="var(--border)"
+                    vertical={false}
                   />
-                  <Area
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                    tickLine={false}
+                    axisLine={false}
+                    minTickGap={36}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={52}
+                    tickFormatter={(v) =>
+                      formatPercentPlain(Number(v), 1, false)
+                    }
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "6px",
+                      fontSize: 12,
+                    }}
+                    labelFormatter={(_, payload) => {
+                      const row = payload?.[0]?.payload as
+                        | { date?: string }
+                        | undefined;
+                      return row?.date ?? "";
+                    }}
+                    formatter={(value, name) => {
+                      const n = Number(value);
+                      const label =
+                        name === "nominal"
+                          ? "Nominal"
+                          : name === "real"
+                            ? "Reel (TÜFE)"
+                            : "Fark";
+                      return [formatPercentPlain(n, 2, false), label];
+                    }}
+                  />
+                  <Legend
+                    formatter={(value) =>
+                      value === "nominal"
+                        ? "Nominal"
+                        : value === "real"
+                          ? "Reel (TÜFE)"
+                          : value
+                    }
+                  />
+                  <Line
                     type="monotone"
                     dataKey="nominal"
-                    stroke="var(--chart-1)"
-                    fill="var(--chart-1)"
-                    fillOpacity={0.15}
                     name="nominal"
+                    stroke="var(--chart-1)"
+                    strokeWidth={2.5}
+                    dot={false}
+                    connectNulls
                   />
-                  <Area
+                  <Line
                     type="monotone"
                     dataKey="real"
-                    stroke="var(--chart-2)"
-                    fill="var(--chart-2)"
-                    fillOpacity={0.12}
                     name="real"
+                    stroke="var(--chart-2)"
+                    strokeWidth={2.5}
+                    strokeDasharray="6 4"
+                    dot={false}
+                    connectNulls
                   />
-                </AreaChart>
+                </LineChart>
               </ResponsiveContainer>
             )}
           </CardContent>
@@ -379,12 +478,40 @@ export default function RealReturnPage() {
             <CardTitle>Enflasyon Düzeltmeli Sermaye</CardTitle>
             <CardDescription>TÜFE ile güncellenmiş katkı</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <p className="text-2xl font-semibold tabular-nums">
               {data.summary.inflationAdjustedCapital != null
                 ? formatMoney(data.summary.inflationAdjustedCapital)
                 : "—"}
             </p>
+            {latestChart && (
+              <div className="space-y-2 border-t border-border pt-3 text-sm">
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Nominal</span>
+                  <span className="tabular-nums font-medium">
+                    {latestChart.nominal != null
+                      ? formatPercentPlain(latestChart.nominal, 2, false)
+                      : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Reel (TÜFE)</span>
+                  <span className="tabular-nums font-medium">
+                    {latestChart.real != null
+                      ? formatPercentPlain(latestChart.real, 2, false)
+                      : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Enflasyon farkı</span>
+                  <span className="tabular-nums font-medium text-negative">
+                    {latestChart.gap != null
+                      ? formatPercentPlain(-Math.abs(latestChart.gap), 2, false)
+                      : "—"}
+                  </span>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -442,6 +569,12 @@ export default function RealReturnPage() {
       </Card>
     </div>
   );
+}
+
+function formatChartDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}.${m}`;
 }
 
 function HurdleCard({
