@@ -45,16 +45,19 @@ interface PeriodBlock {
   };
 }
 
+type PeriodPnlMode = "vsInvested" | "intraPeriod";
+
 /**
  * Dönem kârı.
- * - Portföy dönem içinde başlamışsa (öncesi snapshot yok): toplam kâr =
- *   güncel değer − yatırılan ana para (ilk günün kârı kaçmaz).
- * - Aksi halde: dönem başı/sonu özsermaye farkı.
+ * - vsInvested + prior yok: güncel değer − ana para (toplam / inception).
+ * - intraPeriod (aylık): ay içi ilk → son snapshot; ana para farkı düşülür.
+ * - prior varsa (varsayılan): dönem başı öncesi değer → son.
  */
 function computePeriodPnl(
   snapshots: SnapshotRow[],
   start: Date,
-  end: Date
+  end: Date,
+  mode: PeriodPnlMode = "vsInvested"
 ): {
   startDate: string;
   endDate: string;
@@ -81,9 +84,28 @@ function computePeriodPnl(
     };
   }
 
+  const first = snapsInRange[0]!;
   const last = snapsInRange[snapsInRange.length - 1]!;
   const endValue = d(last.totalMarketValue.toString());
   const endNet = d(last.netContributions.toString());
+
+  // Aylık: her zaman ay içi ilk→son (toplam ile karışmasın)
+  if (mode === "intraPeriod") {
+    const startValue = d(first.totalMarketValue.toString());
+    const startNet = d(first.netContributions.toString());
+    const nominalPnl = endValue.minus(startValue).minus(endNet.minus(startNet));
+    const denom = startValue.isZero() ? endNet : startValue;
+    const nominalReturn = denom.isZero() ? null : nominalPnl.div(denom);
+    return {
+      startDate: toDateKey(first.snapshotDate),
+      endDate: toDateKey(last.snapshotDate),
+      startValue: startValue.toNumber(),
+      endValue: endValue.toNumber(),
+      investedAtEnd: endNet.toNumber(),
+      nominalPnl: nominalPnl.toNumber(),
+      nominalReturn: nominalReturn?.toNumber() ?? null,
+    };
+  }
 
   const prior = [...snapshots]
     .reverse()
@@ -93,7 +115,7 @@ function computePeriodPnl(
   if (!prior) {
     const nominalPnl = endValue.minus(endNet);
     return {
-      startDate: toDateKey(snapsInRange[0]!.snapshotDate),
+      startDate: toDateKey(first.snapshotDate),
       endDate: toDateKey(last.snapshotDate),
       startValue: endNet.toNumber(), // ana para (getirisiz)
       endValue: endValue.toNumber(),
@@ -320,7 +342,8 @@ export async function GET() {
     const monthPnl = computePeriodPnl(
       snapshots,
       ranges.thisMonth.start,
-      ranges.thisMonth.end
+      ranges.thisMonth.end,
+      "intraPeriod"
     );
     const yearPnl = computePeriodPnl(
       snapshots,

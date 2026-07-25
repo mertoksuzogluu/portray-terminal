@@ -254,7 +254,9 @@ export default function RealReturnPage() {
               "Bu dönem için yeterli snapshot yok"
             )}
             <span className="mt-1 block text-xs">
-              Nominal kâr (dış katkı hariç)
+              {period === "month"
+                ? "Ay içi değişim (ilk gün → bugün); toplam ana paraya göre"
+                : "Nominal kâr (dış katkı hariç)"}
             </span>
           </CardContent>
         </Card>
