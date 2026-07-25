@@ -15,6 +15,8 @@ export interface GenerateMonthlyAiResult {
   periodLabel: string;
   periodStart: string;
   periodEnd: string;
+  source: "openai" | "template" | null;
+  aiError: string | null;
 }
 
 /** Rapor dönemi: asOf ayının 1’i → asOf (genelde ayın 30’u). */
@@ -65,6 +67,8 @@ export async function generateMonthlyAiAnalystReports(
 
   let reportsCreated = 0;
   let reportsUpdated = 0;
+  let lastSource: "openai" | "template" | null = null;
+  let lastAiError: string | null = null;
 
   for (const portfolio of portfolios) {
     const metrics = await buildMonthlyAiMetrics(
@@ -73,6 +77,8 @@ export async function generateMonthlyAiAnalystReports(
       periodEnd
     );
     const narrative = await buildAiNarrative(periodLabel, metrics);
+    lastSource = narrative.source;
+    lastAiError = narrative.aiError ?? null;
 
     const content: MonthlyAiReportContent = {
       version: 1,
@@ -138,5 +144,7 @@ export async function generateMonthlyAiAnalystReports(
     periodLabel,
     periodStart: toDateKey(periodStart),
     periodEnd: toDateKey(periodEnd),
+    source: lastSource,
+    aiError: lastAiError,
   };
 }

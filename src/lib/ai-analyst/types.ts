@@ -72,6 +72,8 @@ export interface MonthlyAiNarrative {
   outlook: string;
   disclaimer: string;
   source: "openai" | "template";
+  /** Şablona düşüldüyse neden (anahtar yok / kota / API hatası) */
+  aiError?: string | null;
 }
 
 export interface MonthlyAiReportContent {

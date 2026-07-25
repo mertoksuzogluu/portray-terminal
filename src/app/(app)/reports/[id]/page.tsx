@@ -3,17 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { ArrowLeft, Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton";
-import { PnlValue } from "@/components/shared/pnl-value";
 import { ApiError, clientFetch } from "@/lib/api/client-fetch";
 import type { MonthlyAiReportContent } from "@/lib/ai-analyst/types";
 import {
@@ -21,6 +13,7 @@ import {
   formatMoney,
   formatPercentPlain,
 } from "@/lib/format/tr";
+import { cn } from "@/lib/utils/cn";
 
 interface ReportPayload {
   id: string;
@@ -46,31 +39,70 @@ function isMonthlyContent(
   );
 }
 
-function MetricCard({
-  label,
+function pct(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return formatPercentPlain(v * 100, 2, false);
+}
+
+function money(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return formatMoney(v);
+}
+
+function actionTr(action: string): string {
+  switch (action) {
+    case "INCREASE":
+      return "Artır";
+    case "DECREASE":
+      return "Azalt";
+    case "HOLD":
+      return "Koruyun";
+    case "SHIFT_CLASS":
+      return "Kaydırın";
+    case "PARK_CASH":
+      return "Nakit tutun";
+    default:
+      return action;
+  }
+}
+
+function Section({
+  number,
+  title,
   children,
-  hint,
 }: {
-  label: string;
+  number: string;
+  title: string;
   children: React.ReactNode;
-  hint?: string;
 }) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-xl tabular-nums">{children}</CardTitle>
-      </CardHeader>
-      {hint ? (
-        <CardContent className="text-xs text-muted-foreground">{hint}</CardContent>
-      ) : null}
-    </Card>
+    <section className="border-t border-neutral-200 pt-6 dark:border-neutral-700">
+      <h2 className="mb-3 font-display text-lg tracking-tight text-neutral-900 dark:text-neutral-50">
+        <span className="mr-2 text-neutral-400">{number}</span>
+        {title}
+      </h2>
+      <div className="space-y-3 text-[15px] leading-relaxed text-neutral-700 dark:text-neutral-300">
+        {children}
+      </div>
+    </section>
   );
 }
 
-function pctOrDash(v: number | null | undefined) {
-  if (v == null) return "—";
-  return <PnlValue value={v * 100} type="percent" />;
+function StatRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-neutral-100 py-2.5 last:border-0 dark:border-neutral-800">
+      <span className="text-sm text-neutral-500">{label}</span>
+      <span className="text-right text-sm font-medium tabular-nums text-neutral-900 dark:text-neutral-100">
+        {value}
+      </span>
+    </div>
+  );
 }
 
 export default function AiAnalystDetailPage() {
@@ -107,11 +139,7 @@ export default function AiAnalystDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" />
           AI Analist
         </Link>
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            {error ?? "Rapor yok"}
-          </CardContent>
-        </Card>
+        <p className="text-sm text-muted-foreground">{error ?? "Rapor yok"}</p>
       </div>
     );
   }
@@ -121,281 +149,198 @@ export default function AiAnalystDetailPage() {
   const n = content?.narrative;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            href="/reports"
-            className="-ml-2 mb-2 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            AI Analist
-          </Link>
-          <h1 className="font-display text-2xl tracking-tight">{report.title}</h1>
-          <p className="text-sm text-muted-foreground">
-            {formatDateTR(report.periodStart)} – {formatDateTR(report.periodEnd)}
-            {n ? ` · Kaynak: ${n.source === "openai" ? "OpenAI" : "Şablon analist"}` : ""}
-          </p>
-        </div>
-        <Badge variant="outline">Aylık AI Raporu</Badge>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+        <Link
+          href="/reports"
+          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          AI Analist
+        </Link>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={() => window.print()}
+        >
+          <Printer className="h-4 w-4" />
+          Yazdır / PDF
+        </Button>
       </div>
 
-      {n && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Yönetici özeti</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm leading-relaxed text-muted-foreground">
-            {n.executiveSummary}
-          </CardContent>
-        </Card>
+      {n?.aiError && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm print:hidden">
+          <p className="font-medium text-amber-900 dark:text-amber-200">
+            AI bağlanamadı — şablon metin kullanıldı
+          </p>
+          <p className="mt-1 text-amber-800/90 dark:text-amber-200/80">
+            {n.aiError}
+          </p>
+        </div>
       )}
 
-      {m && (
-        <>
-          <div>
-            <h2 className="mb-3 font-display text-lg">Dönem metrikleri</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <MetricCard label="Nominal getiri">
-                {pctOrDash(m.nominalReturn)}
-              </MetricCard>
-              <MetricCard label="Nominal kâr" hint="Ay içi değişim">
-                {m.nominalPnl != null ? (
-                  <PnlValue value={m.nominalPnl} type="money" />
-                ) : (
-                  "—"
-                )}
-              </MetricCard>
-              <MetricCard label="Maks. düşüş">
-                {m.maxDrawdown != null
-                  ? formatPercentPlain(m.maxDrawdown * 100, 2, false)
-                  : "—"}
-              </MetricCard>
-              <MetricCard label="Maks. yükseliş">
-                {m.maxRise != null
-                  ? formatPercentPlain(m.maxRise * 100, 2, false)
-                  : "—"}
-              </MetricCard>
-              <MetricCard label="Volatilite (yıllık)">
-                {m.volatilityAnnual != null
-                  ? formatPercentPlain(m.volatilityAnnual * 100, 2, false)
-                  : "—"}
-              </MetricCard>
-              <MetricCard label="Sharpe (risk oranı)">
-                {m.sharpeRatio?.toFixed(2) ?? "—"}
-              </MetricCard>
-              <MetricCard label="Sortino">
-                {m.sortinoRatio?.toFixed(2) ?? "—"}
-              </MetricCard>
-              <MetricCard label="Pozitif gün oranı">
-                {pctOrDash(m.positiveDayRatio)}
-              </MetricCard>
+      {/* PDF / belge görünümü */}
+      <article
+        className={cn(
+          "mx-auto max-w-3xl rounded-sm border border-neutral-200 bg-[#faf9f7] px-6 py-10 shadow-sm",
+          "dark:border-neutral-700 dark:bg-neutral-950",
+          "print:max-w-none print:border-0 print:bg-white print:px-0 print:py-0 print:shadow-none"
+        )}
+      >
+        <header className="mb-8 border-b border-neutral-300 pb-6 dark:border-neutral-600">
+          <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+            Aylık portföy raporu
+          </p>
+          <h1 className="mt-2 font-display text-3xl tracking-tight text-neutral-900 dark:text-neutral-50">
+            {report.title.replace(/ — AI Analist · /, " · ")}
+          </h1>
+          <p className="mt-2 text-sm text-neutral-500">
+            Dönem: {formatDateTR(report.periodStart)} –{" "}
+            {formatDateTR(report.periodEnd)}
+            {n
+              ? ` · ${n.source === "openai" ? "AI ile yazıldı" : "Şablon metin"}`
+              : ""}
+          </p>
+        </header>
+
+        {n && (
+          <Section number="01" title="Kısaca ne oldu?">
+            <p>{n.executiveSummary}</p>
+          </Section>
+        )}
+
+        {m && (
+          <Section number="02" title="Sayılarla bu ay">
+            <div className="rounded-sm border border-neutral-200 bg-white/70 px-4 dark:border-neutral-700 dark:bg-neutral-900/50">
+              <StatRow label="Ay başı portföy" value={money(m.startValue)} />
+              <StatRow label="Ay sonu portföy" value={money(m.endValue)} />
+              <StatRow label="Yatırılan ana para" value={money(m.investedCapital)} />
+              <StatRow label="Bu ay kazanç / zarar" value={money(m.nominalPnl)} />
+              <StatRow label="Bu ay yüzde" value={pct(m.nominalReturn)} />
+              <StatRow label="En kötü düşüş" value={pct(m.maxDrawdown)} />
+              <StatRow label="En iyi yükseliş" value={pct(m.maxRise)} />
+              <StatRow label="Dalgalanma (yıllık)" value={pct(m.volatilityAnnual)} />
+              <StatRow
+                label="Enflasyona göre sonuç"
+                value={pct(m.vsInflationReturn)}
+              />
+              <StatRow
+                label="Vadeliye göre sonuç"
+                value={pct(m.vsDepositReturn)}
+              />
+              <StatRow label="BIST 100 bu ay" value={pct(m.bist100Return)} />
+              <StatRow
+                label="Borsaya göre farkınız"
+                value={pct(m.alphaVsBist)}
+              />
             </div>
-          </div>
+          </Section>
+        )}
 
-          <div>
-            <h2 className="mb-3 font-display text-lg">Reel / alternatif getiri</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardDescription>{m.inflationLabel}</CardDescription>
-                  <CardTitle className="text-lg tabular-nums">
-                    Hurdle {pctOrDash(m.inflationHurdle)} · Ayarlı{" "}
-                    {pctOrDash(m.vsInflationReturn)}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  Ayarlı kâr:{" "}
-                  {m.vsInflationPnl != null
-                    ? formatMoney(m.vsInflationPnl)
-                    : "—"}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardDescription>{m.depositLabel}</CardDescription>
-                  <CardTitle className="text-lg tabular-nums">
-                    Hurdle {pctOrDash(m.depositHurdle)} · Ayarlı{" "}
-                    {pctOrDash(m.vsDepositReturn)}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  Ayarlı kâr:{" "}
-                  {m.vsDepositPnl != null ? formatMoney(m.vsDepositPnl) : "—"}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+        {n && (
+          <>
+            <Section number="03" title="Performans">
+              <p>{n.performanceAnalysis}</p>
+            </Section>
+            <Section number="04" title="Risk ve dalgalanma">
+              <p>{n.riskAnalysis}</p>
+            </Section>
+            <Section number="05" title="Borsa ile karşılaştırma">
+              <p>{n.benchmarkComparison}</p>
+            </Section>
+          </>
+        )}
 
-          <div>
-            <h2 className="mb-3 font-display text-lg">BIST 100 karşılaştırması</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <MetricCard label="BIST 100 getiri">
-                {pctOrDash(m.bist100Return)}
-              </MetricCard>
-              <MetricCard label="Portföy alpha">
-                {pctOrDash(m.alphaVsBist)}
-              </MetricCard>
-              <MetricCard label="Beta">
-                {m.betaVsBist?.toFixed(2) ?? "—"}
-              </MetricCard>
-              <MetricCard label="Korelasyon">
-                {m.correlationVsBist?.toFixed(2) ?? "—"}
-              </MetricCard>
-            </div>
-            {n && (
-              <Card className="mt-3">
-                <CardContent className="pt-4 text-sm leading-relaxed text-muted-foreground">
-                  {n.benchmarkComparison}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          <div>
-            <h2 className="mb-3 font-display text-lg">Dağılım</h2>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Sınıf dağılımı</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {m.allocationByClass.map((s) => (
-                    <div
-                      key={s.key}
-                      className="flex items-center justify-between text-sm"
-                    >
-                      <span>{s.label}</span>
-                      <span className="tabular-nums text-muted-foreground">
-                        {formatPercentPlain(s.weight * 100, 1, false)} ·{" "}
-                        {formatMoney(s.value)}
-                      </span>
-                    </div>
-                  ))}
-                  {m.allocationByClass.length === 0 && (
-                    <p className="text-sm text-muted-foreground">Veri yok</p>
-                  )}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Pozisyonlar</CardTitle>
-                  <CardDescription>
-                    En büyük {pctOrDash(m.largestWeight)} · Top3{" "}
-                    {pctOrDash(m.top3Weight)} · HHI {m.hhi?.toFixed(3) ?? "—"}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {m.allocationBySymbol.slice(0, 8).map((s) => (
-                    <div
-                      key={s.key}
-                      className="flex items-center justify-between text-sm"
-                    >
-                      <span className="font-medium">{s.label}</span>
-                      <span className="tabular-nums text-muted-foreground">
-                        {formatPercentPlain(s.weight * 100, 1, false)}
-                      </span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </>
-      )}
-
-      {n && (
-        <>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Performans analizi</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm leading-relaxed text-muted-foreground">
-                {n.performanceAnalysis}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Risk analizi</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm leading-relaxed text-muted-foreground">
-                {n.riskAnalysis}
-              </CardContent>
-            </Card>
-          </div>
-
-          <div>
-            <h2 className="mb-3 font-display text-lg">Dünya / makro olaylar</h2>
-            <div className="grid gap-3 md:grid-cols-2">
-              {n.worldEvents.map((e, i) => (
-                <Card key={`${e.title}-${i}`}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">{e.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm text-muted-foreground">
-                    <p>
-                      <span className="font-medium text-foreground">Etki: </span>
-                      {e.impact}
-                    </p>
-                    <p>
-                      <span className="font-medium text-foreground">
-                        Portföy için:{" "}
-                      </span>
-                      {e.implication}
-                    </p>
-                  </CardContent>
-                </Card>
+        {m && m.allocationBySymbol.length > 0 && (
+          <Section number="06" title="Paranız nerede?">
+            <p className="text-sm text-neutral-500">
+              En büyük pay {pct(m.largestWeight)}. İlk üç toplam{" "}
+              {pct(m.top3Weight)}.
+            </p>
+            <div className="mt-2 rounded-sm border border-neutral-200 bg-white/70 px-4 dark:border-neutral-700 dark:bg-neutral-900/50">
+              {m.allocationBySymbol.slice(0, 10).map((s) => (
+                <StatRow
+                  key={s.key}
+                  label={s.label}
+                  value={`${pct(s.weight)} · ${money(s.value)}`}
+                />
               ))}
             </div>
-          </div>
+            {m.allocationByClass.length > 0 && (
+              <div className="mt-4">
+                <p className="mb-2 text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                  Türlere göre
+                </p>
+                <div className="rounded-sm border border-neutral-200 bg-white/70 px-4 dark:border-neutral-700 dark:bg-neutral-900/50">
+                  {m.allocationByClass.map((s) => (
+                    <StatRow
+                      key={s.key}
+                      label={s.label}
+                      value={`${pct(s.weight)} · ${money(s.value)}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </Section>
+        )}
 
-          <div>
-            <h2 className="mb-3 font-display text-lg">Pozisyon önerileri</h2>
-            <div className="space-y-3">
+        {n && n.worldEvents.length > 0 && (
+          <Section number="07" title="Dünyada neler oldu, size etkisi">
+            <ol className="list-decimal space-y-4 pl-5">
+              {n.worldEvents.map((e, i) => (
+                <li key={`${e.title}-${i}`} className="pl-1">
+                  <p className="font-medium text-neutral-900 dark:text-neutral-100">
+                    {e.title}
+                  </p>
+                  <p className="mt-1">{e.impact}</p>
+                  <p className="mt-1 text-neutral-600 dark:text-neutral-400">
+                    Sizin için: {e.implication}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </Section>
+        )}
+
+        {n && n.positionRecommendations.length > 0 && (
+          <Section number="08" title="Ne yapılabilir?">
+            <ol className="list-decimal space-y-4 pl-5">
               {n.positionRecommendations
                 .slice()
                 .sort((a, b) => a.priority - b.priority)
                 .map((r, i) => (
-                  <Card key={`${r.title}-${i}`}>
-                    <CardHeader className="pb-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{r.action}</Badge>
-                        <Badge variant="secondary">{r.assetClass}</Badge>
-                        {r.symbol ? (
-                          <Badge variant="outline">{r.symbol}</Badge>
-                        ) : null}
-                        <CardTitle className="text-base">{r.title}</CardTitle>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="text-sm text-muted-foreground">
-                      {r.rationale}
-                    </CardContent>
-                  </Card>
+                  <li key={`${r.title}-${i}`} className="pl-1">
+                    <p className="font-medium text-neutral-900 dark:text-neutral-100">
+                      {actionTr(r.action)}
+                      {r.symbol ? ` · ${r.symbol}` : ""} — {r.title}
+                    </p>
+                    <p className="mt-1">{r.rationale}</p>
+                  </li>
                 ))}
-            </div>
-          </div>
+            </ol>
+          </Section>
+        )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Önümüzdeki ay</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm leading-relaxed text-muted-foreground">
-              {n.outlook}
-            </CardContent>
-          </Card>
+        {n && (
+          <Section number="09" title="Gelecek aya bakış">
+            <p>{n.outlook}</p>
+          </Section>
+        )}
 
-          <p className="text-xs text-muted-foreground">{n.disclaimer}</p>
-        </>
-      )}
+        {!content && (
+          <p className="text-sm text-neutral-600">{report.summary}</p>
+        )}
 
-      {!content && (
-        <Card>
-          <CardContent className="py-8 text-sm text-muted-foreground">
-            {report.summary}
-          </CardContent>
-        </Card>
-      )}
+        <footer className="mt-10 border-t border-neutral-300 pt-4 text-xs leading-relaxed text-neutral-500 dark:border-neutral-600">
+          {n?.disclaimer ??
+            "Bu yazı yatırım tavsiyesi değildir. Bilgi amaçlıdır."}
+          <br />
+          Oluşturulma: {formatDateTR(report.createdAt)}
+        </footer>
+      </article>
     </div>
   );
 }

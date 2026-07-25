@@ -7,7 +7,7 @@ import type {
 } from "./types";
 
 const DISCLAIMER =
-  "Bu rapor yatırım tavsiyesi değildir. AI Analist çıktıları bilgilendirme amaçlıdır; kararlarınızı kendi araştırmanız ve risk toleransınız doğrultusunda verin.";
+  "Bu yazı yatırım tavsiyesi değildir. Bilgi amaçlıdır; kararları kendi durumuna göre ver.";
 
 function pct(v: number | null): string {
   if (v == null) return "—";
@@ -19,44 +19,65 @@ function money(v: number | null): string {
   return formatMoney(v);
 }
 
+function monthNameTr(periodLabel: string): string {
+  const [y, m] = periodLabel.split("-");
+  const names = [
+    "Ocak",
+    "Şubat",
+    "Mart",
+    "Nisan",
+    "Mayıs",
+    "Haziran",
+    "Temmuz",
+    "Ağustos",
+    "Eylül",
+    "Ekim",
+    "Kasım",
+    "Aralık",
+  ];
+  const mi = Number(m) - 1;
+  return `${names[mi] ?? m} ${y}`;
+}
+
 function buildTemplateWorldEvents(
   periodLabel: string,
   m: MonthlyAiMetrics
 ): WorldEventItem[] {
+  const month = monthNameTr(periodLabel);
   const events: WorldEventItem[] = [
     {
-      title: `${periodLabel}: küresel faiz ve risk iştahı`,
+      title: `${month}: faiz ve dünya piyasaları`,
       impact:
-        "Gelişmiş ülke merkez bankası beklentileri riskli varlık fiyatlarını ve Türkiye varlıklarına sermaye akışını etkiler.",
+        "Dünyada faiz ve büyüme haberleri borsa, fon ve dövizi hareket ettirir. Türkiye varlıkları da bundan etkilenir.",
       implication:
         m.volatilityAnnual != null && m.volatilityAnnual > 0.25
-          ? "Portföy volatilitesi yüksek; nakit/altın tamponu ve kademeli alım düşünülebilir."
-          : "Volatilite ılımlı; hedef dağılıma yakın kalın, ani kaldıraçtan kaçının.",
+          ? "Portföyünüz bu ay oldukça oynak göründü. Acele alım-satım yerine küçük adımlarla ilerlemek daha güvenli olabilir."
+          : "Dalgalanma aşırı görünmüyor. Planınızı bozmadan devam etmek mantıklı olabilir.",
     },
     {
-      title: "Türkiye enflasyonu ve reel getiri baskısı",
-      impact: `${m.inflationLabel} hurdle ${pct(m.inflationHurdle)}; mevduat hurdle ${pct(m.depositHurdle)}.`,
+      title: "Enflasyon ve yaşam maliyeti",
+      impact: `Bu ay enflasyon kıyası yaklaşık ${pct(m.inflationHurdle)}. Yani paranızın alım gücünü korumak için en az bu kadar kazanç gerekir.`,
       implication:
         m.vsInflationReturn != null && m.vsInflationReturn < 0
-          ? "Nominal getiri enflasyonu karşılamakta zorlanıyor; reel koruma (altın/döviz/kısa vadeli fon) ağırlığı gözden geçirilmeli."
-          : "Enflasyona göre dönem getirisi göreli olumlu; kârı kilitlemek için aşırı tek varlık yoğunluğunu sınırlayın.",
+          ? "Kazancınız enflasyonu karşılamakta zorlanmış olabilir. Bir kısmı daha sakin enstrümanlarda tutmayı düşünebilirsiniz."
+          : "Bu ay enflasyona göre durum görece iyi. Yine de tüm parayı tek yerde tutmamak iyi olur.",
     },
     {
-      title: "BIST 100 ve yurt içi hisse piyasası",
-      impact: `Dönem BIST 100 getirisi ${pct(m.bist100Return)}; portföy alpha ${pct(m.alphaVsBist)}.`,
+      title: "Borsa İstanbul (BIST 100)",
+      impact: `BIST 100 bu dönemde ${pct(m.bist100Return)} değişti. Sizin portföyünüz ise ${pct(m.nominalReturn)}.`,
       implication:
         m.alphaVsBist != null && m.alphaVsBist < 0
-          ? "Endeksin gerisinde kalındı; beta/yoğunluk ve fon seçimini gözden geçirin."
-          : "Endekse göre göreli performans olumlu; momentum peşinde aşırı konsantrasyondan kaçının.",
+          ? "Borsanın gerisinde kaldınız. Seçtiğiniz fon/hisseleri gözden geçirmek faydalı olabilir."
+          : "Borsaya göre daha iyi veya yakın gittiniz. Ani büyütme yerine dengeli kalmak iyi olabilir.",
     },
   ];
 
   if (m.largestWeight != null && m.largestWeight > 0.4) {
     events.push({
-      title: "Yoğunlaşma riski",
-      impact: `Tek pozisyon ağırlığı %${(m.largestWeight * 100).toFixed(1)}.`,
+      title: "Tek varlıkta yoğunlaşma",
+      impact: `Paranızın yaklaşık %${(m.largestWeight * 100).toFixed(0)}’i tek yerde.`,
       implication:
-        "Tek isim / tek tema şoku portföyü sert sarsabilir; kademeli dengeleme önerilir.",
+        "Bir şey düşerse portföyünüz sert etkilenebilir. Yavaş yavaş dağıtmayı düşünebilirsiniz.",
     });
   }
 
@@ -75,8 +96,8 @@ function buildTemplateRecommendations(
       action: "DECREASE",
       assetClass: "FUND",
       symbol: top?.key ?? null,
-      title: "Yoğun pozisyonu azalt",
-      rationale: `En büyük ağırlık ${pct(m.largestWeight)}. Tek varlık riskini düşürmek için kademeli azaltım düşünün.`,
+      title: `${top?.key ?? "En büyük pozisyon"} payını biraz azaltın`,
+      rationale: `Paranın ${pct(m.largestWeight)}’i burada. Riski düşürmek için kademeli azaltmak iyi olabilir.`,
       priority: priority++,
     });
   }
@@ -85,8 +106,8 @@ function buildTemplateRecommendations(
     recs.push({
       action: "PARK_CASH",
       assetClass: "CASH",
-      title: "Vadeli / para piyasası tamponu",
-      rationale: `Mevduata göre ayarlanmış getiri ${pct(m.vsDepositReturn)}. Likidite ve fırsat rezervi için kısa vadeli fon/nakit payını artırın.`,
+      title: "Bir miktar parayı daha sakin yerde tutun",
+      rationale: `Vadeli mevduata göre bu ay geride kaldınız (${pct(m.vsDepositReturn)}). Acil para ve fırsat için nakit/para piyasası fonu düşünülebilir.`,
       priority: priority++,
     });
   }
@@ -95,8 +116,8 @@ function buildTemplateRecommendations(
     recs.push({
       action: "SHIFT_CLASS",
       assetClass: "EQUITY",
-      title: "BIST’e göre geride — dağılımı gözden geçir",
-      rationale: `Alpha ${pct(m.alphaVsBist)}. Endeks / geniş fonlar ile aktif seçim dengesini yeniden kurun.`,
+      title: "Borsaya göre geridesiniz — seçimleri kontrol edin",
+      rationale: `BIST 100’den yaklaşık ${pct(Math.abs(m.alphaVsBist))} geridesiniz. Daha geniş ve sade fonlar işe yarayabilir.`,
       priority: priority++,
     });
   }
@@ -105,8 +126,8 @@ function buildTemplateRecommendations(
     recs.push({
       action: "HOLD",
       assetClass: "GOLD",
-      title: "Düşüş tamponu (altın / döviz)",
-      rationale: `Dönem maks. düşüş ${pct(m.maxDrawdown)}. Koruma sınıfı (altın/FX) hedef ağırlığını kontrol edin.`,
+      title: "Koruma payını kontrol edin",
+      rationale: `Bu ay en kötü düşüş ${pct(m.maxDrawdown)} oldu. Altın veya döviz gibi koruma payı var mı bakın.`,
       priority: priority++,
     });
   }
@@ -115,9 +136,9 @@ function buildTemplateRecommendations(
     recs.push({
       action: "HOLD",
       assetClass: "FUND",
-      title: "Mevcut dağılımı koru, hedefe yakın kal",
+      title: "Büyük değişiklik yapmayın",
       rationale:
-        "Metrikler aşırı sapma göstermiyor. Planlı yeniden dengeleme dışında agresif değişiklik önerilmiyor.",
+        "Bu ay aşırı bir sapma görünmüyor. Planınıza yakın kalıp gerekirse küçük dengeler yapmak yeterli olabilir.",
       priority: 1,
     });
   }
@@ -129,20 +150,27 @@ export function buildTemplateNarrative(
   periodLabel: string,
   m: MonthlyAiMetrics
 ): MonthlyAiNarrative {
+  const month = monthNameTr(periodLabel);
   const worldEvents = buildTemplateWorldEvents(periodLabel, m);
   const positionRecommendations = buildTemplateRecommendations(m);
 
+  const gainText =
+    m.nominalPnl != null && m.nominalPnl >= 0
+      ? `yaklaşık ${money(m.nominalPnl)} kazanç`
+      : `yaklaşık ${money(m.nominalPnl != null ? Math.abs(m.nominalPnl) : null)} zarar`;
+
   return {
-    executiveSummary: `${periodLabel} AI Analist özeti: Portföy nominal getiri ${pct(m.nominalReturn)} (${money(m.nominalPnl)}), BIST 100 ${pct(m.bist100Return)}, alpha ${pct(m.alphaVsBist)}. Maks. düşüş ${pct(m.maxDrawdown)}, maks. yükseliş ${pct(m.maxRise)}, yıllıklaştırılmış volatilite ${pct(m.volatilityAnnual)}, Sharpe ${m.sharpeRatio?.toFixed(2) ?? "—"}. Enflasyona göre ayarlı getiri ${pct(m.vsInflationReturn)}; vadeliye göre ${pct(m.vsDepositReturn)}.`,
-    performanceAnalysis: `Dönem başı değer ${money(m.startValue)}, dönem sonu ${money(m.endValue)}, ana para ${money(m.investedCapital)}. En iyi gün ${pct(m.bestDay)}, en kötü gün ${pct(m.worstDay)}; pozitif gün oranı ${pct(m.positiveDayRatio)}. ${m.observationCount} gözlemle hesaplandı.`,
-    riskAnalysis: `Maksimum düşüş ${pct(m.maxDrawdown)}${m.maxDrawdownStart && m.maxDrawdownTrough ? ` (${m.maxDrawdownStart} → ${m.maxDrawdownTrough})` : ""}. Maksimum yükseliş ${pct(m.maxRise)}${m.maxRiseStart && m.maxRisePeak ? ` (${m.maxRiseStart} → ${m.maxRisePeak})` : ""}. Sortino ${m.sortinoRatio?.toFixed(2) ?? "—"}. En büyük ağırlık ${pct(m.largestWeight)}, ilk 3 toplam ${pct(m.top3Weight)}, HHI ${m.hhi?.toFixed(3) ?? "—"}.`,
-    benchmarkComparison: `BIST 100 dönem getirisi ${pct(m.bist100Return)} (seviye ${m.bist100Start?.toFixed(0) ?? "—"} → ${m.bist100End?.toFixed(0) ?? "—"}). Portföy beta ${m.betaVsBist?.toFixed(2) ?? "—"}, korelasyon ${m.correlationVsBist?.toFixed(2) ?? "—"}. Alpha (portföy − BIST) ${pct(m.alphaVsBist)}.`,
+    executiveSummary: `${month} özeti: Portföyünüz bu dönemde ${pct(m.nominalReturn)} değişti (${gainText}). Borsa (BIST 100) ${pct(m.bist100Return)} gitti. En kötü düşüş ${pct(m.maxDrawdown)}, en iyi yükseliş ${pct(m.maxRise)}. Enflasyona göre ayarlı sonuç ${pct(m.vsInflationReturn)}; vadeliye göre ${pct(m.vsDepositReturn)}.`,
+    performanceAnalysis: `Ay başında portföy ${money(m.startValue)}, ay sonunda ${money(m.endValue)} idi. Yatırdığınız ana para yaklaşık ${money(m.investedCapital)}. En iyi gün ${pct(m.bestDay)}, en kötü gün ${pct(m.worstDay)}. Günlerin yaklaşık ${pct(m.positiveDayRatio)}’inde değer arttı.`,
+    riskAnalysis: `En kötü düşüş ${pct(m.maxDrawdown)}${m.maxDrawdownStart && m.maxDrawdownTrough ? ` (${m.maxDrawdownStart} ile ${m.maxDrawdownTrough} arasında)` : ""}. En iyi yükseliş ${pct(m.maxRise)}${m.maxRiseStart && m.maxRisePeak ? ` (${m.maxRiseStart} → ${m.maxRisePeak})` : ""}. Fiyatlar ne kadar oynak? Yaklaşık yıllık ${pct(m.volatilityAnnual)}. En büyük tek pozisyon payı ${pct(m.largestWeight)}; ilk üç toplam ${pct(m.top3Weight)}.`,
+    benchmarkComparison: `BIST 100 bu dönemde ${pct(m.bist100Return)} değişti. Sizin getiriniz ${pct(m.nominalReturn)}. Fark (siz − borsa): ${pct(m.alphaVsBist)}. Borsayla ne kadar birlikte hareket ettiğiniz: ${m.correlationVsBist != null ? m.correlationVsBist.toFixed(2) : "—"}.`,
     worldEvents,
     positionRecommendations,
     outlook:
-      "Önümüzdeki ay için: enflasyon ve faiz görünümünü izleyin; yoğun pozisyonları kademeli dengeleyin; BIST’e göre alpha zayıfsa geniş endeks/fon payını artırın. Yeni alımları tek seferde değil, kademeli planlayın.",
+      "Gelecek ay için sakin ilerleyin: enflasyon ve faiz haberlerini izleyin, tek varlığa aşırı yüklenmeyin, yeni alımları parçalara bölün. Büyük ani değişikliklerden kaçının.",
     disclaimer: DISCLAIMER,
     source: "template",
+    aiError: null,
   };
 }
 
@@ -156,39 +184,89 @@ interface OpenAiNarrativeJson {
   outlook?: string;
 }
 
+function sanitizeApiKey(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const key = raw.trim().replace(/^["']|["']$/g, "").trim();
+  return key.length > 0 ? key : null;
+}
+
+/** Basit sayılar — modele teknik jargon taşımayalım. */
+function metricsForPrompt(m: MonthlyAiMetrics) {
+  return {
+    ayBasiPortfoy: m.startValue,
+    aySonuPortfoy: m.endValue,
+    yatirilanAnaPara: m.investedCapital,
+    buAyKazancZarar: m.nominalPnl,
+    buAyYuzde: m.nominalReturn,
+    enKotuDusus: m.maxDrawdown,
+    enIyiYukselis: m.maxRise,
+    dalgalanmaYillik: m.volatilityAnnual,
+    enIyiGun: m.bestDay,
+    enKotuGun: m.worstDay,
+    artiGunOrani: m.positiveDayRatio,
+    enflasyonKiyasi: m.inflationHurdle,
+    enflasyonaGoreSonuc: m.vsInflationReturn,
+    vadeliKiyasi: m.depositHurdle,
+    vadeliyeGoreSonuc: m.vsDepositReturn,
+    bist100Yuzde: m.bist100Return,
+    borsayaGoreFark: m.alphaVsBist,
+    enBuyukPozisyonPayi: m.largestWeight,
+    ilkUcPay: m.top3Weight,
+    dagilim: m.allocationBySymbol.slice(0, 8).map((s) => ({
+      ad: s.label,
+      pay: s.weight,
+      tutar: s.value,
+    })),
+  };
+}
+
 export async function buildAiNarrative(
   periodLabel: string,
   m: MonthlyAiMetrics
 ): Promise<MonthlyAiNarrative> {
   const fallback = buildTemplateNarrative(periodLabel, m);
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return fallback;
+  const apiKey = sanitizeApiKey(process.env.OPENAI_API_KEY);
+  if (!apiKey) {
+    return {
+      ...fallback,
+      aiError:
+        "OPENAI_API_KEY bulunamadı. Vercel’e ekleyip Redeploy yaptığınızdan emin olun.",
+    };
+  }
 
-  const prompt = {
+  const month = monthNameTr(periodLabel);
+  const model = sanitizeApiKey(process.env.OPENAI_MODEL) || "gpt-4o-mini";
+
+  const system = {
     role: "system",
-    content:
-      "Sen Türkiye odaklı bir portföy AI analistisin. Yatırım tavsiyesi vermiyorsun; riskleri ve senaryoları açıklıyorsun. Yanıtı yalnızca geçerli JSON olarak ver.",
+    content: `Sen sade dille yazan bir portföy asistanısın. Türkçe yaz.
+Kurallar:
+- Yatırım tavsiyesi gibi emir verme; "düşünebilirsin", "bakılabilir" de.
+- Finans jargonu kullanma (alpha, beta, sharpe, hurdle, volatilite, nominal, sortino, HHI yok).
+- Bunun yerine: kazanç, düşüş, yükseliş, dalgalanma, enflasyon, vadeli, borsa, pay yaz.
+- Kısa cümleler. Herkesin anlayacağı dil.
+- Sadece geçerli JSON döndür.`,
   };
 
   const user = {
     role: "user",
-    content: `Dönem: ${periodLabel}
-Metrikler (JSON): ${JSON.stringify(m)}
+    content: `Ay: ${month} (${periodLabel})
+Sayılar (oranlar 0.05 = %5): ${JSON.stringify(metricsForPrompt(m))}
 
-Şu şemada Türkçe JSON üret:
+JSON şema:
 {
-  "executiveSummary": string,
-  "performanceAnalysis": string,
-  "riskAnalysis": string,
-  "benchmarkComparison": string,
-  "worldEvents": [{"title": string, "impact": string, "implication": string}],
-  "positionRecommendations": [{"action": "INCREASE"|"DECREASE"|"HOLD"|"SHIFT_CLASS"|"PARK_CASH", "assetClass": string, "symbol": string|null, "title": string, "rationale": string, "priority": number}],
-  "outlook": string
+  "executiveSummary": "3-5 cümle, günlük dilde ay özeti",
+  "performanceAnalysis": "ne kadar kazanıldı/kayıp, ay başı-sonu",
+  "riskAnalysis": "en kötü düşüş, en iyi yükseliş, dalgalanma, tek pozisyon riski — sade dil",
+  "benchmarkComparison": "BIST 100 ile karşılaştırma, sade dil",
+  "worldEvents": [{"title":"...","impact":"...","implication":"..."}],
+  "positionRecommendations": [{"action":"INCREASE|DECREASE|HOLD|SHIFT_CLASS|PARK_CASH","assetClass":"FUND|EQUITY|CASH|GOLD|FX","symbol":null,"title":"kısa başlık","rationale":"neden, sade dil","priority":1}],
+  "outlook": "gelecek ay için 3-4 cümle sakin öneri"
 }
 
-worldEvents: o aya dair temel küresel/Türkiye makro olayları ve portföye etkisi (3-5 madde).
-positionRecommendations: metrik + olaylara dayalı somut pozisyon önerileri (3-6 madde).
-Abartma; sayılara sadık kal.`,
+worldEvents: 3-5 madde, o aya dair dünya/Türkiye gelişmeleri ve portföye etkisi.
+positionRecommendations: 3-5 madde, sayılara dayalı.
+Sayıları uydurma; verilenlere uy.`,
   };
 
   try {
@@ -199,19 +277,36 @@ Abartma; sayılara sadık kal.`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",
-        temperature: 0.4,
+        model,
+        temperature: 0.35,
         response_format: { type: "json_object" },
-        messages: [prompt, user],
+        messages: [system, user],
       }),
     });
 
-    if (!res.ok) return fallback;
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      let detail = body.slice(0, 280);
+      try {
+        const j = JSON.parse(body) as { error?: { message?: string } };
+        if (j.error?.message) detail = j.error.message;
+      } catch {
+        /* keep text */
+      }
+      return {
+        ...fallback,
+        aiError: `OpenAI hata (${res.status}): ${detail}`,
+      };
+    }
+
     const data = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
     const raw = data.choices?.[0]?.message?.content;
-    if (!raw) return fallback;
+    if (!raw) {
+      return { ...fallback, aiError: "OpenAI boş yanıt döndü." };
+    }
+
     const parsed = JSON.parse(raw) as OpenAiNarrativeJson;
 
     return {
@@ -233,8 +328,15 @@ Abartma; sayılara sadık kal.`,
       outlook: parsed.outlook ?? fallback.outlook,
       disclaimer: DISCLAIMER,
       source: "openai",
+      aiError: null,
     };
-  } catch {
-    return fallback;
+  } catch (err) {
+    return {
+      ...fallback,
+      aiError:
+        err instanceof Error
+          ? `OpenAI isteği başarısız: ${err.message}`
+          : "OpenAI isteği başarısız.",
+    };
   }
 }

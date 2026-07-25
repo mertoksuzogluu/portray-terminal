@@ -56,9 +56,17 @@ export default function AiAnalystPage() {
 
   async function handleGenerate() {
     setGenerating(true);
+    setError(null);
     try {
-      await clientFetch("/api/reports/generate-monthly", { method: "POST" });
+      const result = await clientFetch<{
+        ok: boolean;
+        source?: "openai" | "template" | null;
+        aiError?: string | null;
+      }>("/api/reports/generate-monthly", { method: "POST" });
       await load();
+      if (result.source === "template" && result.aiError) {
+        setError(`AI bağlanamadı: ${result.aiError}`);
+      }
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "Rapor üretilemedi."
