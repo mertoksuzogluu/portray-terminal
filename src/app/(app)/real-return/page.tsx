@@ -23,6 +23,8 @@ import { formatMoney, formatPercentPlain } from "@/lib/format/tr";
 interface RealReturnData {
   summary: {
     nominalReturn: number | null;
+    investedCapital: number | null;
+    currentValue: number | null;
     realReturn: number | null;
     inflationAdjustedCapital: number | null;
     realReturnIsEstimated?: boolean;
@@ -171,21 +173,19 @@ export default function RealReturnPage() {
           <CardHeader className="pb-2">
             <CardDescription>Ana para</CardDescription>
             <CardTitle className="text-2xl tabular-nums">
-              {month.startValue != null ? formatMoney(month.startValue) : "—"}
+              {data.summary.investedCapital != null
+                ? formatMoney(data.summary.investedCapital)
+                : "—"}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm text-muted-foreground">
-            <p>
-              Ay başı portföy değeri
-              {month.startDate ? ` · ${month.startDate}` : ""}
-            </p>
-            {month.endValue != null && (
+            <p>Yatırılan para (net katkı — getiri dahil değil)</p>
+            {data.summary.currentValue != null && (
               <p className="tabular-nums">
-                Güncel:{" "}
+                Güncel portföy:{" "}
                 <span className="font-medium text-foreground">
-                  {formatMoney(month.endValue)}
+                  {formatMoney(data.summary.currentValue)}
                 </span>
-                {month.endDate ? ` · ${month.endDate}` : ""}
               </p>
             )}
           </CardContent>

@@ -207,9 +207,19 @@ export async function GET() {
       ? Number(latest.cumulativeReturn.toString())
       : null;
 
+    const investedCapital = latest
+      ? Number(latest.netContributions.toString())
+      : null;
+    const currentValue = latest
+      ? Number(latest.totalMarketValue.toString())
+      : null;
+
     return jsonOk({
       summary: {
         nominalReturn,
+        // Yatırılan ana para (getiri eklenmez) — net katkılar
+        investedCapital,
+        currentValue,
         // Canlı hesap (prorata dahil); eski snapshot'taki eşit nominal/reel değerini ez
         realReturn: computedReal.realReturn ?? (
           latest?.realReturn
