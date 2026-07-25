@@ -25,6 +25,7 @@ interface RealReturnData {
     nominalReturn: number | null;
     realReturn: number | null;
     inflationAdjustedCapital: number | null;
+    realReturnIsEstimated?: boolean;
     latestInflationRate: number | null;
     latestMonthlyInflation: number | null;
     latestPeriod: string | null;
@@ -37,7 +38,11 @@ interface RealReturnData {
       nominalReturn: number | null;
     };
     hurdles: {
-      inflation: { period: string | null; rate: number | null };
+      inflation: {
+        period: string | null;
+        rate: number | null;
+        annualRate?: number | null;
+      };
       usd: { rate: number | null; start: number | null; end: number | null };
       deposit: { annualRate: number; monthlyRate: number };
     };
@@ -161,29 +166,78 @@ export default function RealReturnPage() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardDescription>Bu ay nominal getiri</CardDescription>
-          <CardTitle className="text-2xl tabular-nums">
-            {month.nominalPnl != null ? (
-              <PnlValue value={month.nominalPnl} type="money" />
-            ) : (
-              "—"
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Ana para</CardDescription>
+            <CardTitle className="text-2xl tabular-nums">
+              {month.startValue != null ? formatMoney(month.startValue) : "—"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm text-muted-foreground">
+            <p>
+              Ay başı portföy değeri
+              {month.startDate ? ` · ${month.startDate}` : ""}
+            </p>
+            {month.endValue != null && (
+              <p className="tabular-nums">
+                Güncel:{" "}
+                <span className="font-medium text-foreground">
+                  {formatMoney(month.endValue)}
+                </span>
+                {month.endDate ? ` · ${month.endDate}` : ""}
+              </p>
             )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          {month.nominalReturn != null ? (
-            <>
-              Oran:{" "}
-              <PnlValue value={month.nominalReturn * 100} type="percent" />
-            </>
-          ) : (
-            "Bu ay için yeterli snapshot yok"
-          )}
-          <span className="mt-1 block text-xs">
-            Formül: ayarlanmış kâr = nominal × (1 − aylık hurdle)
-          </span>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Bu ay nominal getiri</CardDescription>
+            <CardTitle className="text-2xl tabular-nums">
+              {month.nominalPnl != null ? (
+                <PnlValue value={month.nominalPnl} type="money" />
+              ) : (
+                "—"
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            {month.nominalReturn != null ? (
+              <>
+                Oran:{" "}
+                <PnlValue value={month.nominalReturn * 100} type="percent" />
+              </>
+            ) : (
+              "Bu ay için yeterli snapshot yok"
+            )}
+            <span className="mt-1 block text-xs">
+              Formül: ayarlanmış kâr = nominal × (1 − aylık hurdle)
+            </span>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-border/80 bg-muted/30">
+        <CardContent className="space-y-1 py-4 text-sm text-muted-foreground">
+          <p>
+            <span className="font-medium text-foreground">Aylık TÜFE</span> =
+            bir ayın fiyat artışı
+            {data.summary.latestPeriod && data.summary.latestMonthlyInflation != null
+              ? ` (${data.summary.latestPeriod}: ${formatPercentPlain(data.summary.latestMonthlyInflation * 100, 2, false)})`
+              : ""}
+            . Bu, aylık kâr hurdle’ıdır —{" "}
+            <span className="font-medium text-foreground">yıllık × 1/12 değil</span>.
+          </p>
+          <p>
+            <span className="font-medium text-foreground">Yıllık TÜFE (YoY)</span> =
+            son 12 ayın kümülatifi
+            {data.summary.latestInflationRate != null
+              ? ` (${formatPercentPlain(data.summary.latestInflationRate * 100, 1, false)})`
+              : ""}
+            . Aylık %0,99 × 12 ≈ %12 olsa da gerçek yıllık, önceki yüksek aylar
+            yüzünden daha yüksektir.
+          </p>
         </CardContent>
       </Card>
 
@@ -192,7 +246,11 @@ export default function RealReturnPage() {
           title="Enflasyona göre"
           subtitle={
             hurdles.inflation.period && hurdles.inflation.rate != null
-              ? `TÜFE ${hurdles.inflation.period} · ${formatPercentPlain(hurdles.inflation.rate * 100, 2, false)}`
+              ? `Aylık TÜFE ${hurdles.inflation.period} · ${formatPercentPlain(hurdles.inflation.rate * 100, 2, false)}${
+                  hurdles.inflation.annualRate != null
+                    ? ` · yıllık YoY ${formatPercentPlain(hurdles.inflation.annualRate * 100, 1, false)}`
+                    : ""
+                }`
               : "TÜFE oranı yok"
           }
           adjusted={adjusted.vsInflation}
@@ -236,17 +294,23 @@ export default function RealReturnPage() {
               "—"
             )
           }
+          hint={
+            data.summary.realReturnIsEstimated
+              ? "Son TÜFE ayından sonraki günler prorata tahmin"
+              : undefined
+          }
         />
         <MetricCard
-          title="Son Yıllık Enflasyon"
+          title="Yıllık TÜFE (YoY)"
           value={
             data.summary.latestInflationRate != null
               ? formatPercentPlain(data.summary.latestInflationRate * 100, 1, false)
               : "—"
           }
+          hint="Son 12 ay — aylık × 12 değil"
         />
         <MetricCard
-          title="Son Aylık TÜFE"
+          title="Aylık TÜFE"
           value={
             data.summary.latestMonthlyInflation != null
               ? formatPercentPlain(
@@ -255,6 +319,11 @@ export default function RealReturnPage() {
                   false
                 )
               : "—"
+          }
+          hint={
+            data.summary.latestPeriod
+              ? `${data.summary.latestPeriod} resmi aylık değişim`
+              : undefined
           }
         />
       </div>
@@ -413,9 +482,11 @@ function HurdleCard({
 function MetricCard({
   title,
   value,
+  hint,
 }: {
   title: string;
   value: React.ReactNode;
+  hint?: string;
 }) {
   return (
     <Card>
@@ -424,6 +495,9 @@ function MetricCard({
       </CardHeader>
       <CardContent>
         <p className="text-2xl font-semibold tabular-nums">{value}</p>
+        {hint && (
+          <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+        )}
       </CardContent>
     </Card>
   );

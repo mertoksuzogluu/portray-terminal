@@ -88,7 +88,9 @@ Sonuç yıllıklandırılmış orandır (0.25 = %25).
 inflatedAmount = amount × (toIndex / fromIndex)
 ```
 
-Her pozitif nakit girişi, işlem ayındaki TÜFE endeksinden (`findIndexAtPeriod`) değerlendirme ayına taşınır. Eksik ay için son bilinen endeks kullanılır (`isEstimated = true`).
+Her pozitif nakit girişi, işlem ayındaki TÜFE endeksinden (`findIndexAtPeriod`) değerlendirme ayına taşınır. Eksik ay için son bilinen endeks kullanılır (`isEstimated = true`). Son yayımlanan TÜFE ayından sonraki günler için son `monthlyRate` gün bazlı prorata edilir: `(1+r)^(gün/30.44)` — aksi halde aynı ayda giren yeni sermaye için reel = nominal kalır.
+
+**Not:** Aylık TÜFE ≠ yıllık/12. Yıllık (YoY) son 12 ayın kümülatifidir; aylık %0,99 × 12 ≈ %12 iken gerçek YoY önceki yüksek aylar nedeniyle ~%32 olabilir.
 
 ### Reel getiri
 

@@ -20,6 +20,7 @@ import {
 } from "@/lib/calculations/returns";
 import { calculateXirr, buildPortfolioXirrFlows } from "@/lib/calculations/xirr";
 import {
+  applyProratedMonthlyInflation,
   calculateRealReturn,
   findIndexAtPeriod,
   inflateAmount,
@@ -252,6 +253,37 @@ describe("inflation & real return", () => {
     expect(toNumber(result.realReturn!)).toBeLessThan(
       toNumber(result.currentValue.minus(result.nominalContributions).div(result.nominalContributions))
     );
+  });
+
+  it("prorates last monthly rate after unpublished TÜFE months", () => {
+    const series = [
+      {
+        period: "2026-06",
+        indexValue: 129.99,
+        monthlyRate: 0.0099,
+      },
+    ];
+    // Temmuz katkısı: endeks aynı kalır ama gün proratası ile sermaye artar
+    const { capital, isEstimated } = inflationAdjustedCapital(
+      [{ date: new Date("2026-07-17T00:00:00Z"), amount: 100_000 }],
+      series,
+      new Date("2026-07-26T00:00:00Z")
+    );
+    expect(isEstimated).toBe(true);
+    expect(toNumber(capital)).toBeGreaterThan(100_000);
+    // 9 gün ≈ (1.0099)^(9/30.44) * 100000 ≈ 100291
+    closeTo(toNumber(capital, 0), 100_291, 50);
+  });
+
+  it("applies prorated monthly inflation helper", () => {
+    const inflated = applyProratedMonthlyInflation(
+      100_000,
+      0.03,
+      new Date("2026-07-01T00:00:00Z"),
+      new Date("2026-07-31T00:00:00Z")
+    );
+    // ~30 gün ≈ tam aylık %3
+    closeTo(toNumber(inflated, 0), 103_000, 200);
   });
 });
 

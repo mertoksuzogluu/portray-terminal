@@ -75,7 +75,7 @@ async function getLatestPriceMap(
  * Böylece kullanıcı ayrı "nakit yatırma" işlemi girmeden yalnızca alış
  * kaydetse bile yatırdığı para doğru hesaplanır ve nakit negatife düşmez.
  */
-function netContribAsOf(allTx: Transaction[], upTo: Date): Decimal {
+export function netContribAsOf(allTx: Transaction[], upTo: Date): Decimal {
   const upToDay = startOfDay(upTo).getTime();
   const filtered = allTx.filter(
     (t) => startOfDay(t.transactionDate).getTime() <= upToDay
@@ -103,6 +103,25 @@ function netContribAsOf(allTx: Transaction[], upTo: Date): Decimal {
   const cash = computeCashBalance(filtered);
   const shortfall = cash.isNegative() ? cash.neg() : d(0);
   return explicit.plus(shortfall);
+}
+
+/** Her işlem gününde kümülatif katkı değişimini tarihli nakit akışına çevirir. */
+export function buildContributionCashFlows(
+  allTx: Transaction[]
+): Array<{ date: Date; amount: Decimal }> {
+  const txDayTimes = [
+    ...new Set(allTx.map((t) => startOfDay(t.transactionDate).getTime())),
+  ].sort((a, b) => a - b);
+  let prevCumContrib = d(0);
+  const cashFlows: Array<{ date: Date; amount: Decimal }> = [];
+  for (const time of txDayTimes) {
+    const dte = new Date(time);
+    const cum = netContribAsOf(allTx, dte);
+    const delta = cum.minus(prevCumContrib);
+    if (!delta.isZero()) cashFlows.push({ date: dte, amount: delta });
+    prevCumContrib = cum;
+  }
+  return cashFlows;
 }
 
 async function loadInflationSeries(): Promise<InflationPoint[]> {
@@ -287,20 +306,7 @@ export async function createDailySnapshot(
     : cumulativeProfitLoss.div(netContributions);
 
   // Reel getiri
-  // Reel getiri için tarihli katkı akışları: her işlem gününde kümülatif
-  // katkının (açık nakit + alım fonlaması) değişimini alırız.
-  const txDayTimes = [
-    ...new Set(allTx.map((t) => startOfDay(t.transactionDate).getTime())),
-  ].sort((a, b) => a - b);
-  let prevCumContrib = d(0);
-  const cashFlows: Array<{ date: Date; amount: Decimal }> = [];
-  for (const time of txDayTimes) {
-    const dte = new Date(time);
-    const cum = netContribAsOf(allTx, dte);
-    const delta = cum.minus(prevCumContrib);
-    if (!delta.isZero()) cashFlows.push({ date: dte, amount: delta });
-    prevCumContrib = cum;
-  }
+  const cashFlows = buildContributionCashFlows(allTx);
 
   const inflationSeries = await loadInflationSeries();
   const real = calculateRealReturn({

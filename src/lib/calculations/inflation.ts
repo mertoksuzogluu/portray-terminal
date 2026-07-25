@@ -1,5 +1,8 @@
 import { d, Decimal, type DecimalInput } from "./decimal";
 
+/** Ortalama ay uzunluğu (gün) — prorata için */
+const DAYS_PER_MONTH = 30.436875;
+
 export interface InflationPoint {
   /** YYYY-MM */
   period: string;
@@ -28,6 +31,24 @@ function toPeriod(date: Date): string {
   return `${y}-${m}`;
 }
 
+function utcDay(date: Date): Date {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+  );
+}
+
+function daysBetween(from: Date, to: Date): number {
+  const a = utcDay(from).getTime();
+  const b = utcDay(to).getTime();
+  return Math.max(0, Math.round((b - a) / 86_400_000));
+}
+
+/** Dönemin son günü (UTC), örn. 2026-06 → 2026-06-30 */
+export function endOfPeriod(period: string): Date {
+  const [y, m] = period.split("-").map(Number);
+  return new Date(Date.UTC(y!, m!, 0));
+}
+
 export function findIndexAtPeriod(
   series: InflationPoint[],
   period: string
@@ -53,7 +74,56 @@ export function inflateAmount(
 }
 
 /**
+ * Son yayımlanan aylık orana göre gün bazlı taşıma: (1+r)^(gün/30.44)
+ */
+export function applyProratedMonthlyInflation(
+  amount: DecimalInput,
+  monthlyRate: DecimalInput | null | undefined,
+  fromDate: Date,
+  toDate: Date
+): Decimal {
+  const base = d(amount);
+  if (monthlyRate == null) return base;
+  const rate = d(monthlyRate);
+  const days = daysBetween(fromDate, toDate);
+  if (days <= 0 || rate.isZero()) return base;
+  return base.times(d(1).plus(rate).pow(d(days).div(DAYS_PER_MONTH)));
+}
+
+function inflateFlow(
+  amount: Decimal,
+  flowDate: Date,
+  asOf: Date,
+  toIndex: Decimal,
+  inflationSeries: InflationPoint[],
+  latestPeriod: string | undefined
+): Decimal {
+  const fromIndex = findIndexAtPeriod(inflationSeries, toPeriod(flowDate));
+  let inflated = fromIndex
+    ? inflateAmount(amount, fromIndex, toIndex)
+    : amount;
+
+  // Son TÜFE ayından sonraki günler için son aylık oranı prorata uygula
+  if (!latestPeriod) return inflated;
+  const latestPoint = inflationSeries.find((p) => p.period === latestPeriod);
+  const monthlyRate = latestPoint?.monthlyRate;
+  const periodEnd = endOfPeriod(latestPeriod);
+  if (utcDay(asOf).getTime() <= periodEnd.getTime()) return inflated;
+
+  const prorataStart =
+    utcDay(flowDate).getTime() > periodEnd.getTime() ? flowDate : periodEnd;
+  return applyProratedMonthlyInflation(
+    inflated,
+    monthlyRate,
+    prorataStart,
+    asOf
+  );
+}
+
+/**
  * Her nakit girişini kendi tarihindeki TÜFE'den bugünkü TÜFE'ye taşır.
+ * Son yayımlanan aydan sonraki günler için aylık oran gün bazlı prorata edilir
+ * (aksi halde Temmuz katkıları + Haziran son TÜFE → reel = nominal kalır).
  */
 export function inflationAdjustedCapital(
   cashFlows: CashFlowForInflation[],
@@ -79,24 +149,9 @@ export function inflationAdjustedCapital(
   let capital = d(0);
   for (const flow of cashFlows) {
     const amount = d(flow.amount);
-    // Yalnızca pozitif katkılar (yatırımlar) enflasyona taşınır
-    if (amount.lte(0)) {
-      // Çekimler enflasyonlu sermayeyi azaltır (çekim date index)
-      const fromIndex = findIndexAtPeriod(inflationSeries, toPeriod(flow.date));
-      if (!fromIndex) {
-        capital = capital.plus(amount);
-      } else {
-        capital = capital.plus(inflateAmount(amount, fromIndex, toIndex));
-      }
-      continue;
-    }
-
-    const fromIndex = findIndexAtPeriod(inflationSeries, toPeriod(flow.date));
-    if (!fromIndex) {
-      capital = capital.plus(amount);
-    } else {
-      capital = capital.plus(inflateAmount(amount, fromIndex, toIndex));
-    }
+    capital = capital.plus(
+      inflateFlow(amount, flow.date, asOf, toIndex, inflationSeries, latestPeriod)
+    );
   }
 
   return { capital, isEstimated };

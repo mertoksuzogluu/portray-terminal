@@ -6,9 +6,13 @@ import {
   annualToMonthlyRate,
 } from "@/lib/calculations/monthly-hurdle";
 import { periodReturnFromValues } from "@/lib/calculations/returns";
-import { getPortfolioSnapshots, requirePortfolioContext } from "@/lib/api/portfolio-context";
+import {
+  getPortfolioSnapshots,
+  requirePortfolioContext,
+} from "@/lib/api/portfolio-context";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { periodRanges, toDateKey } from "@/lib/utils/dates";
+import { buildContributionCashFlows } from "@/lib/services/snapshot-service";
 
 async function usdMonthlyChange(
   monthStart: Date,
@@ -59,11 +63,15 @@ async function usdMonthlyChange(
 export async function GET() {
   try {
     const { user, portfolioId } = await requirePortfolioContext();
-    const [snapshots, inflation] = await Promise.all([
+    const [snapshots, inflation, transactions] = await Promise.all([
       getPortfolioSnapshots(portfolioId, 730),
       prisma.inflationIndex.findMany({
         where: { countryCode: "TR", indexType: "TUFE" },
         orderBy: { period: "asc" },
+      }),
+      prisma.transaction.findMany({
+        where: { portfolioId },
+        orderBy: { transactionDate: "asc" },
       }),
     ]);
 
@@ -94,21 +102,25 @@ export async function GET() {
     let computedReal: {
       realReturn: number | null;
       inflationAdjustedCapital: number | null;
+      isEstimated: boolean;
     } = {
       realReturn: null,
       inflationAdjustedCapital: null,
+      isEstimated: false,
     };
 
     if (latest && inflationPoints.length > 0) {
+      const cashFlows = buildContributionCashFlows(transactions);
       const result = calculateRealReturn({
         currentValue: d(latest.totalMarketValue.toString()),
-        cashFlows: [],
+        cashFlows,
         inflationSeries: inflationPoints,
         asOf: latest.snapshotDate,
       });
       computedReal = {
         realReturn: result.realReturn?.toNumber() ?? null,
         inflationAdjustedCapital: result.inflationAdjustedCapital.toNumber(),
+        isEstimated: result.isEstimated,
       };
     }
 
@@ -146,7 +158,6 @@ export async function GET() {
       const endValue = d(last.totalMarketValue.toString());
       const startNet = d(first.netContributions.toString());
       const endNet = d(last.netContributions.toString());
-      // Dış katkıları ayır: değer değişimi − net katkı değişimi
       const nominalPnl = endValue.minus(startValue).minus(endNet.minus(startNet));
       const nominalReturn =
         monthSnaps.length >= 2
@@ -166,6 +177,10 @@ export async function GET() {
     const inflationRate =
       latestInf?.monthlyRate != null
         ? Number(latestInf.monthlyRate.toString())
+        : null;
+    const annualInflation =
+      latestInf?.annualRate != null
+        ? Number(latestInf.annualRate.toString())
         : null;
     const usd = await usdMonthlyChange(monthStart, monthEnd);
     const annualDeposit = Number(user.riskFreeRateAnnual);
@@ -188,21 +203,26 @@ export async function GET() {
     };
 
     const monthlyReal = series.filter((_, i) => i % 22 === 0);
+    const nominalReturn = latest?.cumulativeReturn
+      ? Number(latest.cumulativeReturn.toString())
+      : null;
 
     return jsonOk({
       summary: {
-        nominalReturn: latest?.cumulativeReturn
-          ? Number(latest.cumulativeReturn.toString())
-          : null,
-        realReturn: latest?.realReturn
-          ? Number(latest.realReturn.toString())
-          : computedReal.realReturn,
-        inflationAdjustedCapital: latest?.inflationAdjustedCapital
-          ? Number(latest.inflationAdjustedCapital.toString())
-          : computedReal.inflationAdjustedCapital,
-        latestInflationRate: latestInf?.annualRate
-          ? Number(latestInf.annualRate.toString())
-          : null,
+        nominalReturn,
+        // Canlı hesap (prorata dahil); eski snapshot'taki eşit nominal/reel değerini ez
+        realReturn: computedReal.realReturn ?? (
+          latest?.realReturn
+            ? Number(latest.realReturn.toString())
+            : null
+        ),
+        inflationAdjustedCapital:
+          computedReal.inflationAdjustedCapital ??
+          (latest?.inflationAdjustedCapital
+            ? Number(latest.inflationAdjustedCapital.toString())
+            : null),
+        realReturnIsEstimated: computedReal.isEstimated,
+        latestInflationRate: annualInflation,
         latestMonthlyInflation: inflationRate,
         latestPeriod: latestInf?.period ?? null,
         month,
@@ -210,6 +230,7 @@ export async function GET() {
           inflation: {
             period: latestInf?.period ?? null,
             rate: inflationRate,
+            annualRate: annualInflation,
           },
           usd: {
             rate: usd.rate,
