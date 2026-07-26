@@ -27,8 +27,23 @@ interface Report {
   createdAt: string;
 }
 
+interface Quota {
+  manualUsedThisMonth: boolean;
+  manualRemaining: number;
+  maxManualPerMonth: number;
+  maxReportsPerMonth: number;
+  autoAtMonthEnd: boolean;
+}
+
+function triggerLabel(reportType: string): string {
+  if (reportType === "monthly_ai_manual") return "Manuel";
+  if (reportType === "monthly_ai") return "Otomatik";
+  return reportType;
+}
+
 export default function AiAnalystPage() {
   const [reports, setReports] = useState<Report[]>([]);
+  const [quota, setQuota] = useState<Quota | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -37,10 +52,12 @@ export default function AiAnalystPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await clientFetch<{ reports: Report[] }>(
-        "/api/reports?type=monthly_ai"
-      );
+      const data = await clientFetch<{
+        reports: Report[];
+        quota: Quota;
+      }>("/api/reports?type=monthly_ai");
       setReports(data.reports);
+      setQuota(data.quota);
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "Raporlar yüklenemedi."
@@ -76,21 +93,31 @@ export default function AiAnalystPage() {
     }
   }
 
+  const canManual = (quota?.manualRemaining ?? 0) > 0;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl tracking-tight">AI Analist</h1>
           <p className="text-sm text-muted-foreground">
-            Her ayın 30’unda yayımlanan detaylı portföy raporu — risk, reel
-            getiri, BIST 100 karşılaştırması ve pozisyon önerileri
+            Ayda en fazla 2 rapor: 1 kez «Bu ayı üret», ayın 30’unda bir otomatik
+            rapor daha
           </p>
+          {quota && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Manuel hak: {quota.manualRemaining}/{quota.maxManualPerMonth}
+              {quota.manualUsedThisMonth
+                ? " · Bu ay kullandınız · 30’unda otomatik yine gelecek"
+                : " · Bu ay henüz kullanmadınız"}
+            </p>
+          )}
         </div>
         <Button
           variant="outline"
           size="sm"
           className="gap-2"
-          disabled={generating}
+          disabled={generating || !canManual}
           onClick={() => void handleGenerate()}
         >
           {generating ? (
@@ -98,7 +125,11 @@ export default function AiAnalystPage() {
           ) : (
             <RefreshCw className="h-4 w-4" />
           )}
-          {generating ? "Üretiliyor…" : "Bu ayı üret"}
+          {generating
+            ? "Üretiliyor…"
+            : canManual
+              ? "Bu ayı üret"
+              : "Manuel hak bitti"}
         </Button>
       </div>
 
@@ -114,7 +145,7 @@ export default function AiAnalystPage() {
         <EmptyState
           icon={Brain}
           title="Henüz aylık rapor yok"
-          description="Ayın 30’unda otomatik üretilir. Şimdi denemek için «Bu ayı üret»e basabilirsiniz."
+          description="Ayda 1 kez manuel üretebilirsiniz; ayın 30’unda otomatik rapor da oluşur."
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
@@ -124,7 +155,7 @@ export default function AiAnalystPage() {
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-base">{r.title}</CardTitle>
-                    <Badge variant="outline">AI Analist</Badge>
+                    <Badge variant="outline">{triggerLabel(r.reportType)}</Badge>
                   </div>
                   <CardDescription>
                     {formatDateTR(r.periodStart)} – {formatDateTR(r.periodEnd)}

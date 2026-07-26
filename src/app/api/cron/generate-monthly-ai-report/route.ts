@@ -5,8 +5,8 @@ import { generateMonthlyAiAnalystReports } from "@/lib/ai-analyst";
 import { istanbulToday } from "@/lib/utils/dates";
 
 /**
- * Her ayın 30'unda aylık AI Analist raporunu üretir.
- * Vercel cron: 0 8 30 * *
+ * Her ayın 30'unda otomatik AI Analist raporu.
+ * Manuel rapor kullanılmış olsa bile ayrıca üretilir (ayda maks 2).
  */
 export async function GET(req: NextRequest) {
   if (!verifyCronSecret(req)) {
@@ -15,7 +15,6 @@ export async function GET(req: NextRequest) {
 
   try {
     const today = istanbulToday();
-    // Şubat vb. 30 olmayan aylarda: ayın son günü ise yine üret
     const day = today.getUTCDate();
     const lastDay = new Date(
       Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0)
@@ -32,7 +31,9 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const result = await generateMonthlyAiAnalystReports(today);
+    const result = await generateMonthlyAiAnalystReports(today, {
+      trigger: "scheduled",
+    });
     return jsonOk({ ok: true, skipped: false, ...result });
   } catch (error) {
     return jsonError(error);

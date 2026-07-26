@@ -8,9 +8,18 @@ import { fetchTopHoldingBriefing } from "./top-holding-briefing";
 import type { TopHoldingInfo } from "./top-holding-briefing";
 import { fetchWorldMarketBriefing } from "./world-briefing";
 import {
+  MONTHLY_AI_MANUAL_REPORT_TYPE,
   MONTHLY_AI_REPORT_TYPE,
   type MonthlyAiReportContent,
+  type MonthlyAiTrigger,
 } from "./types";
+
+export class AiAnalystQuotaError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AiAnalystQuotaError";
+  }
+}
 
 async function resolveTopHolding(
   metricsAllocation: {
@@ -46,6 +55,8 @@ export interface GenerateMonthlyAiResult {
   periodEnd: string;
   source: "openai" | "template" | null;
   aiError: string | null;
+  trigger: MonthlyAiTrigger;
+  manualUsedThisMonth?: boolean;
 }
 
 /** Rapor dönemi: asOf ayının 1’i → asOf (genelde ayın 30’u). */
@@ -82,10 +93,40 @@ function monthTitleTr(periodLabel: string): string {
   return `${names[mi] ?? m} ${y}`;
 }
 
+export async function hasManualReportThisMonth(
+  portfolioId: string,
+  asOf: Date = new Date()
+): Promise<boolean> {
+  const { periodStart } = monthlyReportPeriod(asOf);
+  const existing = await prisma.portfolioReport.findFirst({
+    where: {
+      portfolioId,
+      reportType: MONTHLY_AI_MANUAL_REPORT_TYPE,
+      periodStart,
+    },
+    select: { id: true },
+  });
+  return Boolean(existing);
+}
+
+/**
+ * Aylık AI Analist üretimi.
+ * - manual: hesap başına ayda 1 (ay sonunda otomatik rapordan ayrı)
+ * - scheduled: ayın 30’u cron; manuel kullanılmış olsa bile yeniden oluşur
+ */
 export async function generateMonthlyAiAnalystReports(
   asOf: Date = new Date(),
-  options?: { portfolioId?: string }
+  options?: {
+    portfolioId?: string;
+    trigger?: MonthlyAiTrigger;
+  }
 ): Promise<GenerateMonthlyAiResult> {
+  const trigger: MonthlyAiTrigger = options?.trigger ?? "scheduled";
+  const reportType =
+    trigger === "manual"
+      ? MONTHLY_AI_MANUAL_REPORT_TYPE
+      : MONTHLY_AI_REPORT_TYPE;
+
   const { periodStart, periodEnd, periodLabel } = monthlyReportPeriod(asOf);
   const portfolios = options?.portfolioId
     ? await prisma.portfolio.findMany({
@@ -98,6 +139,7 @@ export async function generateMonthlyAiAnalystReports(
   let reportsUpdated = 0;
   let lastSource: "openai" | "template" | null = null;
   let lastAiError: string | null = null;
+  let manualUsedThisMonth = false;
 
   // BIST: Yahoo geçmişi (demo carry-forward ile karışmasın)
   await ensureBistHistory(periodStart, periodEnd);
@@ -111,6 +153,15 @@ export async function generateMonthlyAiAnalystReports(
   });
 
   for (const portfolio of portfolios) {
+    if (trigger === "manual") {
+      const used = await hasManualReportThisMonth(portfolio.id, asOf);
+      if (used) {
+        throw new AiAnalystQuotaError(
+          "Bu ay için manuel AI Analist hakkınızı zaten kullandınız. Ay sonunda (30’unda) otomatik rapor ayrıca oluşur — ayda en fazla 2 rapor (1 manuel + 1 otomatik)."
+        );
+      }
+    }
+
     const metrics = await buildMonthlyAiMetrics(
       portfolio.id,
       periodStart,
@@ -136,7 +187,8 @@ export async function generateMonthlyAiAnalystReports(
 
     const content: MonthlyAiReportContent = {
       version: 1,
-      kind: MONTHLY_AI_REPORT_TYPE,
+      kind: reportType,
+      trigger,
       generatedAt: new Date().toISOString(),
       period: {
         start: toDateKey(periodStart),
@@ -147,47 +199,65 @@ export async function generateMonthlyAiAnalystReports(
       narrative,
     };
 
-    const title = `${portfolio.name} — AI Analist · ${monthName}`;
+    const triggerLabel = trigger === "manual" ? "Manuel" : "Otomatik";
+    const title = `${portfolio.name} — AI Analist · ${monthName} (${triggerLabel})`;
     const summary = narrative.executiveSummary.slice(0, 400);
 
-    const existing = await prisma.portfolioReport.findUnique({
+    // Aynı ay + aynı tetikleyici: periodStart ay başı ile bulunur (periodEnd günü değişse bile tek kayıt)
+    const existing = await prisma.portfolioReport.findFirst({
       where: {
-        portfolioId_reportType_periodStart_periodEnd: {
-          portfolioId: portfolio.id,
-          reportType: MONTHLY_AI_REPORT_TYPE,
-          periodStart,
-          periodEnd,
-        },
-      },
-    });
-
-    await prisma.portfolioReport.upsert({
-      where: {
-        portfolioId_reportType_periodStart_periodEnd: {
-          portfolioId: portfolio.id,
-          reportType: MONTHLY_AI_REPORT_TYPE,
-          periodStart,
-          periodEnd,
-        },
-      },
-      create: {
         portfolioId: portfolio.id,
-        reportType: MONTHLY_AI_REPORT_TYPE,
+        reportType,
         periodStart,
-        periodEnd,
-        title,
-        summary,
-        content: content as unknown as Prisma.InputJsonValue,
-      },
-      update: {
-        title,
-        summary,
-        content: content as unknown as Prisma.InputJsonValue,
       },
     });
 
-    if (existing) reportsUpdated += 1;
-    else reportsCreated += 1;
+    if (trigger === "manual") {
+      await prisma.portfolioReport.create({
+        data: {
+          portfolioId: portfolio.id,
+          reportType,
+          periodStart,
+          periodEnd,
+          title,
+          summary,
+          content: content as unknown as Prisma.InputJsonValue,
+        },
+      });
+      reportsCreated += 1;
+      manualUsedThisMonth = true;
+    } else if (existing) {
+      await prisma.portfolioReport.update({
+        where: { id: existing.id },
+        data: {
+          periodEnd,
+          title,
+          summary,
+          content: content as unknown as Prisma.InputJsonValue,
+        },
+      });
+      reportsUpdated += 1;
+    } else {
+      await prisma.portfolioReport.create({
+        data: {
+          portfolioId: portfolio.id,
+          reportType,
+          periodStart,
+          periodEnd,
+          title,
+          summary,
+          content: content as unknown as Prisma.InputJsonValue,
+        },
+      });
+      reportsCreated += 1;
+    }
+  }
+
+  if (options?.portfolioId && trigger === "scheduled") {
+    manualUsedThisMonth = await hasManualReportThisMonth(
+      options.portfolioId,
+      asOf
+    );
   }
 
   return {
@@ -199,5 +269,7 @@ export async function generateMonthlyAiAnalystReports(
     periodEnd: toDateKey(periodEnd),
     source: lastSource,
     aiError: lastAiError,
+    trigger,
+    manualUsedThisMonth,
   };
 }

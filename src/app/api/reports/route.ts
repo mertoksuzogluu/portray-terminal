@@ -1,8 +1,11 @@
 import { prisma } from "@/lib/db/prisma";
 import { requirePortfolioContext } from "@/lib/api/portfolio-context";
 import { jsonError, jsonOk } from "@/lib/api/response";
-import { MONTHLY_AI_REPORT_TYPE } from "@/lib/ai-analyst";
-import { toDateKey } from "@/lib/utils/dates";
+import {
+  MONTHLY_AI_REPORT_TYPES,
+  hasManualReportThisMonth,
+} from "@/lib/ai-analyst";
+import { istanbulToday, toDateKey } from "@/lib/utils/dates";
 
 export async function GET(req: Request) {
   try {
@@ -13,11 +16,18 @@ export async function GET(req: Request) {
     const reports = await prisma.portfolioReport.findMany({
       where: {
         portfolioId,
-        ...(type === "all" ? {} : { reportType: MONTHLY_AI_REPORT_TYPE }),
+        ...(type === "all"
+          ? {}
+          : { reportType: { in: [...MONTHLY_AI_REPORT_TYPES] } }),
       },
       orderBy: [{ periodEnd: "desc" }, { createdAt: "desc" }],
       take: 36,
     });
+
+    const manualUsedThisMonth = await hasManualReportThisMonth(
+      portfolioId,
+      istanbulToday()
+    );
 
     return jsonOk({
       reports: reports.map((r) => ({
@@ -29,6 +39,13 @@ export async function GET(req: Request) {
         summary: r.summary,
         createdAt: r.createdAt.toISOString(),
       })),
+      quota: {
+        manualUsedThisMonth,
+        manualRemaining: manualUsedThisMonth ? 0 : 1,
+        maxManualPerMonth: 1,
+        maxReportsPerMonth: 2,
+        autoAtMonthEnd: true,
+      },
     });
   } catch (error) {
     return jsonError(error);

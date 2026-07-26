@@ -29,11 +29,10 @@ interface ReportPayload {
 function isMonthlyContent(
   c: ReportPayload["content"]
 ): c is MonthlyAiReportContent {
+  if (typeof c !== "object" || c == null) return false;
+  const kind = (c as MonthlyAiReportContent).kind;
   return (
-    typeof c === "object" &&
-    c != null &&
-    "kind" in c &&
-    (c as MonthlyAiReportContent).kind === "monthly_ai" &&
+    (kind === "monthly_ai" || kind === "monthly_ai_manual") &&
     "metrics" in c &&
     "narrative" in c
   );
@@ -202,6 +201,13 @@ export default function AiAnalystDetailPage() {
             {n
               ? ` · ${n.source === "openai" ? "AI ile yazıldı" : "Şablon metin"}`
               : ""}
+            {content?.trigger
+              ? ` · ${content.trigger === "manual" ? "Manuel" : "Otomatik"}`
+              : report.reportType === "monthly_ai_manual"
+                ? " · Manuel"
+                : report.reportType === "monthly_ai"
+                  ? " · Otomatik"
+                  : ""}
           </p>
         </header>
 

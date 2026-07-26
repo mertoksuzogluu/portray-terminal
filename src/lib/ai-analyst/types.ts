@@ -1,4 +1,14 @@
+/** Ay sonu otomatik rapor */
 export const MONTHLY_AI_REPORT_TYPE = "monthly_ai" as const;
+/** Kullanıcının ayda 1 kez basabileceği manuel rapor */
+export const MONTHLY_AI_MANUAL_REPORT_TYPE = "monthly_ai_manual" as const;
+
+export const MONTHLY_AI_REPORT_TYPES = [
+  MONTHLY_AI_REPORT_TYPE,
+  MONTHLY_AI_MANUAL_REPORT_TYPE,
+] as const;
+
+export type MonthlyAiTrigger = "manual" | "scheduled";
 
 export interface AllocationSlice {
   key: string;
@@ -106,7 +116,8 @@ export interface MonthlyAiNarrative {
 
 export interface MonthlyAiReportContent {
   version: 1;
-  kind: typeof MONTHLY_AI_REPORT_TYPE;
+  kind: typeof MONTHLY_AI_REPORT_TYPE | typeof MONTHLY_AI_MANUAL_REPORT_TYPE;
+  trigger: MonthlyAiTrigger;
   generatedAt: string;
   period: { start: string; end: string; label: string };
   metrics: MonthlyAiMetrics;
