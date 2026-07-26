@@ -4,6 +4,7 @@ export type {
   MonthlyAiNarrative,
   MonthlyAiReportContent,
   PositionRecommendationItem,
+  TopHoldingSpotlight,
   WorldEventItem,
 } from "./types";
 export { buildMonthlyAiMetrics, calculateMaxRise } from "./metrics";
@@ -14,3 +15,4 @@ export {
 } from "./generate-monthly";
 export { ensureBistHistory } from "./bist-history";
 export { fetchWorldMarketBriefing } from "./world-briefing";
+export { fetchTopHoldingBriefing } from "./top-holding-briefing";

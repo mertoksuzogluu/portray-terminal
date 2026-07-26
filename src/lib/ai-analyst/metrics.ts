@@ -1,16 +1,32 @@
 import { prisma } from "@/lib/db/prisma";
 import { d } from "@/lib/calculations/decimal";
 import {
-  adjustPnlByHurdle,
-  annualToMonthlyRate,
-} from "@/lib/calculations/monthly-hurdle";
-import {
   computeRiskMetrics,
   concentrationAnalysis,
 } from "@/lib/calculations/risk";
 import { assetTypeToClass } from "@/lib/recommendations/asset-class";
 import { toDateKey } from "@/lib/utils/dates";
 import type { MonthlyAiMetrics } from "./types";
+
+/** Yıllık faiz → elde tutulan güne: (1+r)^(gün/365) − 1 */
+function holdingPeriodRate(annualRate: number, days: number): number {
+  if (days <= 0 || !Number.isFinite(annualRate)) return 0;
+  return d(1).plus(annualRate).pow(d(days).div(365)).minus(1).toNumber();
+}
+
+/** Aylık oran → elde tutulan güne: (1+m)^(gün/ayGünü) − 1 */
+function prorateMonthlyRate(
+  monthlyRate: number,
+  days: number,
+  daysInMonth: number
+): number {
+  if (days <= 0 || daysInMonth <= 0 || !Number.isFinite(monthlyRate)) return 0;
+  return d(1)
+    .plus(monthlyRate)
+    .pow(d(days).div(daysInMonth))
+    .minus(1)
+    .toNumber();
+}
 
 const CLASS_LABELS: Record<string, string> = {
   EQUITY: "Hisse / ETF",
@@ -218,28 +234,67 @@ export async function buildMonthlyAiMetrics(
   const latestInf = await prisma.inflationIndex.findFirst({
     orderBy: { period: "desc" },
   });
-  const inflationHurdle =
+
+  // Kâr hangi penceredeyse vadeli/enflasyon da aynı gün sayısıyla
+  const heldDays =
+    first && last
+      ? Math.max(
+          1,
+          Math.round(
+            (last.snapshotDate.getTime() - first.snapshotDate.getTime()) /
+              86_400_000
+          )
+        )
+      : null;
+  const daysInMonth = new Date(
+    Date.UTC(periodEnd.getUTCFullYear(), periodEnd.getUTCMonth() + 1, 0)
+  ).getUTCDate();
+
+  const capitalForOpp =
+    startValue != null && startValue > 0
+      ? startValue
+      : investedCapital != null && investedCapital > 0
+        ? investedCapital
+        : null;
+
+  const inflationMonthlyRaw =
     latestInf?.monthlyRate != null
       ? Number(latestInf.monthlyRate.toString())
       : null;
-  const depositHurdle = annualToMonthlyRate(rf).toNumber();
+  const inflationHurdle =
+    inflationMonthlyRaw != null && heldDays != null
+      ? prorateMonthlyRate(inflationMonthlyRaw, heldDays, daysInMonth)
+      : inflationMonthlyRaw;
 
+  const depositHurdle =
+    heldDays != null ? holdingPeriodRate(rf, heldDays) : null;
+
+  const inflationOpportunityPnl =
+    capitalForOpp != null && inflationHurdle != null
+      ? capitalForOpp * inflationHurdle
+      : null;
+  const depositOpportunityPnl =
+    capitalForOpp != null && depositHurdle != null
+      ? capitalForOpp * depositHurdle
+      : null;
+
+  // Fark = portföy kârı − fırsat maliyeti (eksi ⇒ vadeli/enflasyon daha iyi)
   const vsInflationPnl =
-    nominalPnl != null && inflationHurdle != null
-      ? adjustPnlByHurdle(nominalPnl, inflationHurdle).toNumber()
+    nominalPnl != null && inflationOpportunityPnl != null
+      ? nominalPnl - inflationOpportunityPnl
       : null;
   const vsDepositPnl =
-    nominalPnl != null
-      ? adjustPnlByHurdle(nominalPnl, depositHurdle).toNumber()
+    nominalPnl != null && depositOpportunityPnl != null
+      ? nominalPnl - depositOpportunityPnl
       : null;
 
   const vsInflationReturn =
-    vsInflationPnl != null && startValue != null && startValue > 0
-      ? vsInflationPnl / startValue
+    vsInflationPnl != null && capitalForOpp != null && capitalForOpp > 0
+      ? vsInflationPnl / capitalForOpp
       : null;
   const vsDepositReturn =
-    vsDepositPnl != null && startValue != null && startValue > 0
-      ? vsDepositPnl / startValue
+    vsDepositPnl != null && capitalForOpp != null && capitalForOpp > 0
+      ? vsDepositPnl / capitalForOpp
       : null;
 
   const positionDate = last?.snapshotDate ?? periodEnd;
@@ -323,14 +378,22 @@ export async function buildMonthlyAiMetrics(
     worstDay: risk.worstDay?.toNumber() ?? null,
     positiveDayRatio: risk.positiveDayRatio?.toNumber() ?? null,
     observationCount: risk.observationCount,
+    heldDays,
     inflationHurdle,
     inflationLabel: latestInf
-      ? `Aylık TÜFE ${latestInf.period}`
-      : "Aylık TÜFE",
+      ? heldDays != null
+        ? `TÜFE ${latestInf.period} · ${heldDays} gün`
+        : `Aylık TÜFE ${latestInf.period}`
+      : "Enflasyon kıyası",
+    inflationOpportunityPnl,
     vsInflationPnl,
     vsInflationReturn,
     depositHurdle,
-    depositLabel: `Vadeli (yıllık %${(rf * 100).toFixed(0)} → aylık efektif)`,
+    depositLabel:
+      heldDays != null
+        ? `Vadeli (yıllık %${(rf * 100).toFixed(0)} · ${heldDays} gün)`
+        : `Vadeli (yıllık %${(rf * 100).toFixed(0)})`,
+    depositOpportunityPnl,
     vsDepositPnl,
     vsDepositReturn,
     allocationByClass,

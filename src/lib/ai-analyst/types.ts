@@ -41,12 +41,20 @@ export interface MonthlyAiMetrics {
   worstDay: number | null;
   positiveDayRatio: number | null;
   observationCount: number;
+  /** Elde tutulan gün (kâr penceresi ile aynı) */
+  heldDays: number | null;
   inflationHurdle: number | null;
   inflationLabel: string;
+  /** Enflasyon fırsat maliyeti (TL) */
+  inflationOpportunityPnl: number | null;
+  /** Portföy kârı − enflasyon maliyeti */
   vsInflationPnl: number | null;
   vsInflationReturn: number | null;
   depositHurdle: number | null;
   depositLabel: string;
+  /** Vadeli ile aynı sürede kazanılacak tutar (TL) */
+  depositOpportunityPnl: number | null;
+  /** Portföy kârı − vadeli fırsat; eksi = vadeli daha iyi */
   vsDepositPnl: number | null;
   vsDepositReturn: number | null;
   allocationByClass: AllocationSlice[];
@@ -62,12 +70,28 @@ export interface MonthlyAiMetrics {
   correlationVsBist: number | null;
 }
 
+/** Portföydeki en ağırlıklı ürün — sosyal medya / piyasa nabzı */
+export interface TopHoldingSpotlight {
+  symbol: string;
+  name: string;
+  weight: number;
+  value: number;
+  summary: string;
+  whatPeopleSay: string;
+  expectations: string;
+  currentSituation: string;
+  risksAndWatch: string;
+  sourcesNote: string;
+}
+
 export interface MonthlyAiNarrative {
   executiveSummary: string;
   performanceAnalysis: string;
   riskAnalysis: string;
   benchmarkComparison: string;
   worldEvents: WorldEventItem[];
+  /** En ağırlıklı ürün analizi (X/Twitter, TEFAS, haber) */
+  topHoldingSpotlight: TopHoldingSpotlight | null;
   positionRecommendations: PositionRecommendationItem[];
   outlook: string;
   disclaimer: string;

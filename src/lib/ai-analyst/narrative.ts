@@ -3,8 +3,10 @@ import type {
   MonthlyAiMetrics,
   MonthlyAiNarrative,
   PositionRecommendationItem,
+  TopHoldingSpotlight,
   WorldEventItem,
 } from "./types";
+import type { TopHoldingInfo } from "./top-holding-briefing";
 
 const DISCLAIMER =
   "Bu yazı yatırım tavsiyesi değildir. Bilgi amaçlıdır; kararları kendi durumuna göre ver.";
@@ -146,13 +148,49 @@ function buildTemplateRecommendations(
   return recs;
 }
 
+function buildTemplateTopHolding(
+  holding: TopHoldingInfo | null | undefined
+): TopHoldingSpotlight | null {
+  if (!holding) return null;
+  const label =
+    holding.name && holding.name !== holding.symbol
+      ? `${holding.symbol} (${holding.name})`
+      : holding.symbol;
+  return {
+    symbol: holding.symbol,
+    name: holding.name || holding.symbol,
+    weight: holding.weight,
+    value: holding.value,
+    summary: `${label} portföyünüzün yaklaşık ${pct(holding.weight)}’ini oluşturuyor (${money(holding.value)}). En büyük pozisyon olduğu için bu üründeki haber ve yorumlar tüm portföyü etkiler.`,
+    whatPeopleSay:
+      "Sosyal medya taraması bu raporda çalışmadı. X/Twitter ve yatırım forumlarında fon/hisse kodunu aratarak güncel yorumlara bakabilirsiniz.",
+    expectations:
+      "Faiz ve enflasyon haberleri bu tür ürünlerin getirisine yön verir. Büyük değişiklik öncesi resmi açıklamaları ve TEFAS/piyasa verisini kontrol etmek iyi olur.",
+    currentSituation: `${label} şu an portföyünüzün omurgası. Pay bu kadar yüksekken tek ürün riski de yüksektir.`,
+    risksAndWatch:
+      "Tek üründe yoğunlaşma, faiz kararı, alternatif ürünlere geçiş dalgası ve likidite. Payı kademeli dengelemek düşünülebilir.",
+    sourcesNote: "Şablon metin — web/X taraması yok.",
+  };
+}
+
 export function buildTemplateNarrative(
   periodLabel: string,
-  m: MonthlyAiMetrics
+  m: MonthlyAiMetrics,
+  holding?: TopHoldingInfo | null
 ): MonthlyAiNarrative {
   const month = monthNameTr(periodLabel);
   const worldEvents = buildTemplateWorldEvents(periodLabel, m);
   const positionRecommendations = buildTemplateRecommendations(m);
+  const top =
+    holding ??
+    (m.allocationBySymbol[0]
+      ? {
+          symbol: m.allocationBySymbol[0].key,
+          name: m.allocationBySymbol[0].label,
+          weight: m.allocationBySymbol[0].weight,
+          value: m.allocationBySymbol[0].value,
+        }
+      : null);
 
   const gainText =
     m.nominalPnl != null && m.nominalPnl >= 0
@@ -160,11 +198,12 @@ export function buildTemplateNarrative(
       : `yaklaşık ${money(m.nominalPnl != null ? Math.abs(m.nominalPnl) : null)} zarar`;
 
   return {
-    executiveSummary: `${month} özeti: Portföyünüz bu dönemde ${pct(m.nominalReturn)} değişti (${gainText}). Borsa (BIST 100) ${pct(m.bist100Return)} gitti. En kötü düşüş ${pct(m.maxDrawdown)}, en iyi yükseliş ${pct(m.maxRise)}. Enflasyona göre ayarlı sonuç ${pct(m.vsInflationReturn)}; vadeliye göre ${pct(m.vsDepositReturn)}.`,
+    executiveSummary: `${month} özeti: Portföyünüz bu dönemde ${pct(m.nominalReturn)} değişti (${gainText}). Borsa (BIST 100) ${pct(m.bist100Return)} gitti. En kötü düşüş ${pct(m.maxDrawdown)}, en iyi yükseliş ${pct(m.maxRise)}. Aynı sürede vadeli yaklaşık ${money(m.depositOpportunityPnl)} getirecekti; fark ${money(m.vsDepositPnl)} (${pct(m.vsDepositReturn)}). Enflasyona göre fark ${money(m.vsInflationPnl)}.`,
     performanceAnalysis: `Ay başında portföy ${money(m.startValue)}, ay sonunda ${money(m.endValue)} idi. Yatırdığınız ana para yaklaşık ${money(m.investedCapital)}. En iyi gün ${pct(m.bestDay)}, en kötü gün ${pct(m.worstDay)}. Günlerin yaklaşık ${pct(m.positiveDayRatio)}’inde değer arttı.`,
     riskAnalysis: `En kötü düşüş ${pct(m.maxDrawdown)}${m.maxDrawdownStart && m.maxDrawdownTrough ? ` (${m.maxDrawdownStart} ile ${m.maxDrawdownTrough} arasında)` : ""}. En iyi yükseliş ${pct(m.maxRise)}${m.maxRiseStart && m.maxRisePeak ? ` (${m.maxRiseStart} → ${m.maxRisePeak})` : ""}. Fiyatlar ne kadar oynak? Yaklaşık yıllık ${pct(m.volatilityAnnual)}. En büyük tek pozisyon payı ${pct(m.largestWeight)}; ilk üç toplam ${pct(m.top3Weight)}.`,
     benchmarkComparison: `BIST 100 bu dönemde ${pct(m.bist100Return)} değişti. Sizin getiriniz ${pct(m.nominalReturn)}. Fark (siz − borsa): ${pct(m.alphaVsBist)}. Borsayla ne kadar birlikte hareket ettiğiniz: ${m.correlationVsBist != null ? m.correlationVsBist.toFixed(2) : "—"}.`,
     worldEvents,
+    topHoldingSpotlight: buildTemplateTopHolding(top),
     positionRecommendations,
     outlook:
       "Gelecek ay için sakin ilerleyin: enflasyon ve faiz haberlerini izleyin, tek varlığa aşırı yüklenmeyin, yeni alımları parçalara bölün. Büyük ani değişikliklerden kaçının.",
@@ -180,6 +219,7 @@ interface OpenAiNarrativeJson {
   riskAnalysis?: string;
   benchmarkComparison?: string;
   worldEvents?: WorldEventItem[];
+  topHoldingSpotlight?: Partial<TopHoldingSpotlight> | null;
   positionRecommendations?: PositionRecommendationItem[];
   outlook?: string;
 }
@@ -204,10 +244,15 @@ function metricsForPrompt(m: MonthlyAiMetrics) {
     enIyiGun: m.bestDay,
     enKotuGun: m.worstDay,
     artiGunOrani: m.positiveDayRatio,
-    enflasyonKiyasi: m.inflationHurdle,
-    enflasyonaGoreSonuc: m.vsInflationReturn,
-    vadeliKiyasi: m.depositHurdle,
-    vadeliyeGoreSonuc: m.vsDepositReturn,
+    kiyasGunSayisi: m.heldDays,
+    enflasyonKiyasOrani: m.inflationHurdle,
+    enflasyonMaliyetiTl: m.inflationOpportunityPnl,
+    enflasyonaGoreFarkTl: m.vsInflationPnl,
+    enflasyonaGoreFarkYuzde: m.vsInflationReturn,
+    vadeliKiyasOrani: m.depositHurdle,
+    vadeliIleKazanilacakTl: m.depositOpportunityPnl,
+    vadeliyeGoreFarkTl: m.vsDepositPnl,
+    vadeliyeGoreFarkYuzde: m.vsDepositReturn,
     bist100Yuzde: m.bist100Return,
     borsayaGoreFark: m.alphaVsBist,
     enBuyukPozisyonPayi: m.largestWeight,
@@ -220,12 +265,40 @@ function metricsForPrompt(m: MonthlyAiMetrics) {
   };
 }
 
+function mergeTopHoldingSpotlight(
+  holding: TopHoldingInfo | null | undefined,
+  parsed: Partial<TopHoldingSpotlight> | null | undefined,
+  fallback: TopHoldingSpotlight | null
+): TopHoldingSpotlight | null {
+  if (!holding && !fallback) return null;
+  const base = fallback ?? buildTemplateTopHolding(holding);
+  if (!base) return null;
+  if (!parsed) return base;
+  return {
+    symbol: holding?.symbol ?? base.symbol,
+    name: holding?.name || base.name,
+    weight: holding?.weight ?? base.weight,
+    value: holding?.value ?? base.value,
+    summary: parsed.summary?.trim() || base.summary,
+    whatPeopleSay: parsed.whatPeopleSay?.trim() || base.whatPeopleSay,
+    expectations: parsed.expectations?.trim() || base.expectations,
+    currentSituation: parsed.currentSituation?.trim() || base.currentSituation,
+    risksAndWatch: parsed.risksAndWatch?.trim() || base.risksAndWatch,
+    sourcesNote: parsed.sourcesNote?.trim() || base.sourcesNote,
+  };
+}
+
 export async function buildAiNarrative(
   periodLabel: string,
   m: MonthlyAiMetrics,
-  options?: { worldBriefing?: string | null }
+  options?: {
+    worldBriefing?: string | null;
+    topHolding?: TopHoldingInfo | null;
+    topHoldingBriefing?: string | null;
+  }
 ): Promise<MonthlyAiNarrative> {
-  const fallback = buildTemplateNarrative(periodLabel, m);
+  const holding = options?.topHolding ?? null;
+  const fallback = buildTemplateNarrative(periodLabel, m, holding);
   const apiKey = sanitizeApiKey(process.env.OPENAI_API_KEY);
   if (!apiKey) {
     return {
@@ -238,6 +311,7 @@ export async function buildAiNarrative(
   const month = monthNameTr(periodLabel);
   const model = sanitizeApiKey(process.env.OPENAI_MODEL) || "gpt-4o-mini";
   const briefing = options?.worldBriefing?.trim() || "";
+  const holdingBrief = options?.topHoldingBriefing?.trim() || "";
 
   const system = {
     role: "system",
@@ -247,9 +321,19 @@ Kurallar:
 - Finans jargonu kullanma (alpha, beta, sharpe, hurdle, volatilite, nominal, sortino, HHI yok).
 - Bunun yerine: kazanç, düşüş, yükseliş, dalgalanma, enflasyon, vadeli, borsa, pay yaz.
 - worldEvents’te genel laf yasak (“siyasi belirsizlik” yetmez). Ülke, olay, senaryo yaz.
+- topHoldingSpotlight’ta X/Twitter ve web brifingine dayan; uydurma alıntı yazma.
 - BIST yüzdesini yalnızca verilen sayılardan yaz; uydurma / abartma.
 - Sadece geçerli JSON döndür.`,
   };
+
+  const holdingBlock = holding
+    ? `EN AĞIRLIKLI ÜRÜN: ${holding.symbol} — ${holding.name} | pay ${pct(holding.weight)} | tutar ${money(holding.value)}
+${
+  holdingBrief
+    ? `ÜRÜN SOSYAL/PİYASA BRİFİNGİ (X/Twitter, TEFAS, haber — topHoldingSpotlight bunu kullan):\n${holdingBrief}\n`
+    : "Ürün web brifingi yok; topHoldingSpotlight’ta yine de yoğunlaşma riskini ve takip noktalarını yaz.\n"
+}`
+    : "En ağırlıklı ürün yok.\n";
 
   const user = {
     role: "user",
@@ -261,6 +345,7 @@ ${
     ? `GÜNCEL DÜNYA BRİFİNGİ (web aramasından — worldEvents’i bundan genişlet, uydurma ekleme):\n${briefing}\n`
     : "Web brifingi yok; worldEvents’te o aya özgü somut jeopolitik/makro senaryolar yaz (ör. Orta Doğu gerilimi → petrol/altın; Fed faizi → risk iştahı). Genel slogan yazma.\n"
 }
+${holdingBlock}
 
 JSON şema:
 {
@@ -268,13 +353,22 @@ JSON şema:
   "performanceAnalysis": "ne kadar kazanıldı/kayıp, ay başı-sonu",
   "riskAnalysis": "en kötü düşüş, en iyi yükseliş, dalgalanma, tek pozisyon riski — sade dil",
   "benchmarkComparison": "BIST 100 ile karşılaştırma — SADECE verilen bist100Yuzde sayısını kullan",
-  "worldEvents": [{"title":"somut başlık (ülke/olay)","impact":"ne oldu + hangi varlık (borsa/döviz/altın/petrol)","implication":"iyi/kötü senaryo ve portföy için ne anlama gelir"}],
-  "positionRecommendations": [{"action":"INCREASE|DECREASE|HOLD|SHIFT_CLASS|PARK_CASH","assetClass":"FUND|EQUITY|CASH|GOLD|FX","symbol":null,"title":"kısa başlık","rationale":"neden + hangi dünya olayına bağlı, sade dil","priority":1}],
+  "worldEvents": [{"title":"somut başlık (ülke/olay)","impact":"ne oldu + hangi varlık","implication":"iyi/kötü senaryo"}],
+  "topHoldingSpotlight": {
+    "summary": "2-3 cümle özet",
+    "whatPeopleSay": "X/Twitter ve forumlarda ne deniyor — temalar, iyimser/kötümser — detaylı 1 paragraf",
+    "expectations": "yatırımcı beklentileri — detaylı 1 paragraf",
+    "currentSituation": "ürünün güncel durumu — detaylı 1 paragraf",
+    "risksAndWatch": "riskler ve neye bakılmalı",
+    "sourcesNote": "hangi kaynak türleri (X, TEFAS, haber…)"
+  },
+  "positionRecommendations": [{"action":"INCREASE|DECREASE|HOLD|SHIFT_CLASS|PARK_CASH","assetClass":"FUND|EQUITY|CASH|GOLD|FX","symbol":null,"title":"kısa başlık","rationale":"neden","priority":1}],
   "outlook": "gelecek ay: somut riskler ve sakin öneri, 4-6 cümle"
 }
 
-worldEvents: 5-7 madde, her biri detaylı (2-4 cümle impact + implication).
-positionRecommendations: 3-5 madde; mümkünse worldEvents’e bağla.
+worldEvents: 5-7 madde.
+topHoldingSpotlight: zorunlu (ürün varsa); brifinge sadık kal, uydurma alıntı yok.
+positionRecommendations: 3-5 madde; mümkünse en ağırlıklı ürüne de değin.
 Sayıları uydurma; verilenlere uy.`,
   };
 
@@ -329,6 +423,11 @@ Sayıları uydurma; verilenlere uy.`,
         Array.isArray(parsed.worldEvents) && parsed.worldEvents.length > 0
           ? parsed.worldEvents
           : fallback.worldEvents,
+      topHoldingSpotlight: mergeTopHoldingSpotlight(
+        holding,
+        parsed.topHoldingSpotlight,
+        fallback.topHoldingSpotlight
+      ),
       positionRecommendations:
         Array.isArray(parsed.positionRecommendations) &&
         parsed.positionRecommendations.length > 0

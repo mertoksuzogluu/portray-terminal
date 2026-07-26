@@ -4,11 +4,38 @@ import { marketDateOnly, toDateKey } from "@/lib/utils/dates";
 import { ensureBistHistory } from "./bist-history";
 import { buildMonthlyAiMetrics } from "./metrics";
 import { buildAiNarrative } from "./narrative";
+import { fetchTopHoldingBriefing } from "./top-holding-briefing";
+import type { TopHoldingInfo } from "./top-holding-briefing";
 import { fetchWorldMarketBriefing } from "./world-briefing";
 import {
   MONTHLY_AI_REPORT_TYPE,
   type MonthlyAiReportContent,
 } from "./types";
+
+async function resolveTopHolding(
+  metricsAllocation: {
+    key: string;
+    label: string;
+    weight: number;
+    value: number;
+  }[]
+): Promise<TopHoldingInfo | null> {
+  const top = metricsAllocation[0];
+  if (!top) return null;
+
+  const asset = await prisma.asset.findFirst({
+    where: { symbol: top.key },
+    select: { symbol: true, name: true, assetType: true },
+  });
+
+  return {
+    symbol: top.key,
+    name: asset?.name || top.label || top.key,
+    weight: top.weight,
+    value: top.value,
+    assetType: asset?.assetType ?? null,
+  };
+}
 
 export interface GenerateMonthlyAiResult {
   portfoliosProcessed: number;
@@ -89,8 +116,20 @@ export async function generateMonthlyAiAnalystReports(
       periodStart,
       periodEnd
     );
+    const topHolding = await resolveTopHolding(metrics.allocationBySymbol);
+    const holdingBrief = topHolding
+      ? await fetchTopHoldingBriefing({
+          holding: topHolding,
+          monthName,
+          periodStart: toDateKey(periodStart),
+          periodEnd: toDateKey(periodEnd),
+        })
+      : { briefing: null, error: null };
+
     const narrative = await buildAiNarrative(periodLabel, metrics, {
       worldBriefing: world.briefing,
+      topHolding,
+      topHoldingBriefing: holdingBrief.briefing,
     });
     lastSource = narrative.source;
     lastAiError = narrative.aiError ?? null;

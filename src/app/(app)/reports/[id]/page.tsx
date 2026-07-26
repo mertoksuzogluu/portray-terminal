@@ -219,16 +219,38 @@ export default function AiAnalystDetailPage() {
               <StatRow label="Yatırılan ana para" value={money(m.investedCapital)} />
               <StatRow label="Bu ay kazanç / zarar" value={money(m.nominalPnl)} />
               <StatRow label="Bu ay yüzde" value={pct(m.nominalReturn)} />
+              <StatRow
+                label="Kıyas süresi"
+                value={
+                  m.heldDays != null ? `${m.heldDays} gün (kâr ile aynı)` : "—"
+                }
+              />
               <StatRow label="En kötü düşüş" value={pct(m.maxDrawdown)} />
               <StatRow label="En iyi yükseliş" value={pct(m.maxRise)} />
               <StatRow label="Dalgalanma (yıllık)" value={pct(m.volatilityAnnual)} />
               <StatRow
-                label="Enflasyona göre sonuç"
-                value={pct(m.vsInflationReturn)}
+                label={
+                  m.inflationLabel
+                    ? `Enflasyon maliyeti (${m.inflationLabel})`
+                    : "Enflasyon maliyeti"
+                }
+                value={`${money(m.inflationOpportunityPnl)} · ${pct(m.inflationHurdle)}`}
               />
               <StatRow
-                label="Vadeliye göre sonuç"
-                value={pct(m.vsDepositReturn)}
+                label="Enflasyona göre fark (portföy − enflasyon)"
+                value={`${money(m.vsInflationPnl)} · ${pct(m.vsInflationReturn)}`}
+              />
+              <StatRow
+                label={
+                  m.depositLabel
+                    ? `Vadeli ile kazanılacak (${m.depositLabel})`
+                    : "Vadeli ile kazanılacak"
+                }
+                value={`${money(m.depositOpportunityPnl)} · ${pct(m.depositHurdle)}`}
+              />
+              <StatRow
+                label="Vadeliye göre fark (portföy − vadeli)"
+                value={`${money(m.vsDepositPnl)} · ${pct(m.vsDepositReturn)}`}
               />
               <StatRow label="BIST 100 bu ay" value={pct(m.bist100Return)} />
               <StatRow
@@ -236,6 +258,12 @@ export default function AiAnalystDetailPage() {
                 value={pct(m.alphaVsBist)}
               />
             </div>
+            <p className="mt-3 text-xs text-neutral-500">
+              Vadeli / enflasyon kıyası: aynı paradan aynı günde vadeli veya
+              enflasyon kadar ne kaybedilirdi; fark eksi ise vadeli (veya
+              enflasyon) daha iyi demektir. Rapor tarihi ayın 1’i–sonu olsa bile
+              kâr hesabı ilk portföy gününden itibaren yapılır.
+            </p>
           </Section>
         )}
 
@@ -287,8 +315,53 @@ export default function AiAnalystDetailPage() {
           </Section>
         )}
 
+        {n?.topHoldingSpotlight && (
+          <Section
+            number="07"
+            title={`En ağırlıklı ürün: ${n.topHoldingSpotlight.symbol}`}
+          >
+            <p className="text-sm text-neutral-500">
+              {n.topHoldingSpotlight.name}
+              {" · "}
+              Portföy payı {pct(n.topHoldingSpotlight.weight)}
+              {" · "}
+              {money(n.topHoldingSpotlight.value)}
+            </p>
+            <p className="mt-3">{n.topHoldingSpotlight.summary}</p>
+            <div className="mt-4 space-y-4">
+              <div>
+                <p className="font-medium text-neutral-900 dark:text-neutral-100">
+                  Güncel durum
+                </p>
+                <p className="mt-1">{n.topHoldingSpotlight.currentSituation}</p>
+              </div>
+              <div>
+                <p className="font-medium text-neutral-900 dark:text-neutral-100">
+                  İnsanlar ne diyor? (X / forum / haber)
+                </p>
+                <p className="mt-1">{n.topHoldingSpotlight.whatPeopleSay}</p>
+              </div>
+              <div>
+                <p className="font-medium text-neutral-900 dark:text-neutral-100">
+                  Beklentiler
+                </p>
+                <p className="mt-1">{n.topHoldingSpotlight.expectations}</p>
+              </div>
+              <div>
+                <p className="font-medium text-neutral-900 dark:text-neutral-100">
+                  Riskler ve neye bakılmalı
+                </p>
+                <p className="mt-1">{n.topHoldingSpotlight.risksAndWatch}</p>
+              </div>
+              <p className="text-xs text-neutral-500">
+                Kaynaklar: {n.topHoldingSpotlight.sourcesNote}
+              </p>
+            </div>
+          </Section>
+        )}
+
         {n && n.worldEvents.length > 0 && (
-          <Section number="07" title="Dünyada neler oldu, size etkisi">
+          <Section number="08" title="Dünyada neler oldu, size etkisi">
             <ol className="list-decimal space-y-4 pl-5">
               {n.worldEvents.map((e, i) => (
                 <li key={`${e.title}-${i}`} className="pl-1">
@@ -306,7 +379,7 @@ export default function AiAnalystDetailPage() {
         )}
 
         {n && n.positionRecommendations.length > 0 && (
-          <Section number="08" title="Ne yapılabilir?">
+          <Section number="09" title="Ne yapılabilir?">
             <ol className="list-decimal space-y-4 pl-5">
               {n.positionRecommendations
                 .slice()
@@ -325,7 +398,7 @@ export default function AiAnalystDetailPage() {
         )}
 
         {n && (
-          <Section number="09" title="Gelecek aya bakış">
+          <Section number="10" title="Gelecek aya bakış">
             <p>{n.outlook}</p>
           </Section>
         )}
