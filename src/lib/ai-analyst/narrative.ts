@@ -86,50 +86,127 @@ function buildTemplateWorldEvents(
   return events;
 }
 
+function portfolioComposition(m: MonthlyAiMetrics) {
+  const byClass = Object.fromEntries(
+    m.allocationByClass.map((c) => [c.key, c.weight])
+  ) as Record<string, number>;
+  const fundW = byClass.FUND ?? 0;
+  const equityW = byClass.EQUITY ?? 0;
+  const goldW = byClass.GOLD ?? 0;
+  const fxW = byClass.FX ?? 0;
+  const cashW = byClass.CASH ?? 0;
+  const totalReturn =
+    m.endValue != null &&
+    m.investedCapital != null &&
+    m.investedCapital > 0
+      ? (m.endValue - m.investedCapital) / m.investedCapital
+      : null;
+  return {
+    fundW,
+    equityW,
+    goldW,
+    fxW,
+    cashW,
+    hasDirectEquity: equityW > 0.01,
+    mostlyFunds: fundW >= 0.85,
+    totalReturn,
+  };
+}
+
 function buildTemplateRecommendations(
-  m: MonthlyAiMetrics
+  m: MonthlyAiMetrics,
+  holding?: TopHoldingInfo | null
 ): PositionRecommendationItem[] {
   const recs: PositionRecommendationItem[] = [];
   let priority = 1;
+  const comp = portfolioComposition(m);
+  const top = holding ??
+    (m.allocationBySymbol[0]
+      ? {
+          symbol: m.allocationBySymbol[0].key,
+          name: m.allocationBySymbol[0].label,
+          weight: m.allocationBySymbol[0].weight,
+          value: m.allocationBySymbol[0].value,
+        }
+      : null);
 
-  if (m.largestWeight != null && m.largestWeight > 0.35) {
-    const top = m.allocationBySymbol[0];
+  // 1) Ana ürün: WHY ile koru / dikkat
+  if (top && top.weight >= 0.25) {
+    const profitBit =
+      comp.totalReturn != null
+        ? `Toplamda yaklaşık ${pct(comp.totalReturn)} kârdasınız.`
+        : m.nominalReturn != null
+          ? `Bu dönemde yaklaşık ${pct(m.nominalReturn)} getiri görünüyor.`
+          : "";
+    const beatDeposit =
+      m.vsDepositPnl != null && m.vsDepositPnl >= 0
+        ? " Aynı sürede vadeliyi de geçmiş görünüyorsunuz."
+        : m.vsDepositPnl != null
+          ? " Aynı sürede vadeli biraz daha önde; yine de düzenli getiri tarafı güçlü."
+          : "";
     recs.push({
-      action: "DECREASE",
+      action: "HOLD",
       assetClass: "FUND",
-      symbol: top?.key ?? null,
-      title: `${top?.key ?? "En büyük pozisyon"} payını biraz azaltın`,
-      rationale: `Paranın ${pct(m.largestWeight)}’i burada. Riski düşürmek için kademeli azaltmak iyi olabilir.`,
+      symbol: top.symbol,
+      title: `${top.symbol}’yi şimdilik tutun — ama nedeni bu`,
+      rationale: `${top.symbol}${top.name && top.name !== top.symbol ? ` (${top.name})` : ""} portföyünüzün ~${pct(top.weight)}’i. ${profitBit}${beatDeposit} Düzenli / sakin getiri profili gibi duruyor; acele satmak zorunda değilsiniz. Yeni büyük para eklerken payı daha da şişirmemeye dikkat edin (tek üründe aşırı yığılma).`,
       priority: priority++,
     });
   }
 
-  if (m.vsDepositReturn != null && m.vsDepositReturn < 0) {
+  // 2) Hisse yok / çok az → riskli ürüne acele etme
+  if (!comp.hasDirectEquity) {
+    recs.push({
+      action: "HOLD",
+      assetClass: "EQUITY",
+      symbol: null,
+      title: "Doğrudan hisse alımını şimdilik bekletin",
+      rationale: `Portföyünüzde doğrudan hisse senedi görünmüyor${comp.mostlyFunds ? "; ağırlık fonlarda" : ""}. Piyasa ve jeopolitik haberler oynakken yeni hisse / yüksek riskli ürüne acele etmeyin. Planınız varsa bile kademeli ve küçük payla düşünün; ana paranız sakin tarafta kalsın.`,
+      priority: priority++,
+    });
+  } else if (comp.equityW < 0.1) {
+    recs.push({
+      action: "HOLD",
+      assetClass: "EQUITY",
+      symbol: null,
+      title: "Hisse payınız düşük — büyütmeyi aceleye getirmeyin",
+      rationale: `Hisse / riskli taraf yaklaşık ${pct(comp.equityW)}. Artırmak isterseniz tek seferde değil, küçük adımlarla ve gerekçeniz netken ilerleyin.`,
+      priority: priority++,
+    });
+  }
+
+  // 3) Yoğunlaşma uyarısı (HOLD ile çelişmesin: azalt deme, yeni para yönlendir)
+  if (top && top.weight >= 0.5) {
+    recs.push({
+      action: "SHIFT_CLASS",
+      assetClass: "FUND",
+      symbol: top.symbol,
+      title: `Yeni birikimi ${top.symbol} dışına yönlendirin`,
+      rationale: `${top.symbol} zaten çok ağır (~${pct(top.weight)}). Mevcutı satmak zorunda değilsiniz; bundan sonraki yatırımları başka fon / nakit / koruma tarafına bölmek tek ürün riskini yumuşatır.`,
+      priority: priority++,
+    });
+  }
+
+  // 4) Vadeliye göre gerideyse
+  if (m.vsDepositReturn != null && m.vsDepositReturn < -0.005) {
     recs.push({
       action: "PARK_CASH",
       assetClass: "CASH",
-      title: "Bir miktar parayı daha sakin yerde tutun",
-      rationale: `Vadeli mevduata göre bu ay geride kaldınız (${pct(m.vsDepositReturn)}). Acil para ve fırsat için nakit/para piyasası fonu düşünülebilir.`,
+      title: "Bir kısmı daha öngörülebilir tutun",
+      rationale: `Bu kıyas penceresinde vadeli yaklaşık ${money(m.depositOpportunityPnl)} getirecekti; portföy farkı ${money(m.vsDepositPnl)}. Acil para ve fırsat için kısa vadeli / para piyasası payına bakılabilir — hepsini bozmak şart değil.`,
       priority: priority++,
     });
   }
 
-  if (m.alphaVsBist != null && m.alphaVsBist < -0.02) {
-    recs.push({
-      action: "SHIFT_CLASS",
-      assetClass: "EQUITY",
-      title: "Borsaya göre geridesiniz — seçimleri kontrol edin",
-      rationale: `BIST 100’den yaklaşık ${pct(Math.abs(m.alphaVsBist))} geridesiniz. Daha geniş ve sade fonlar işe yarayabilir.`,
-      priority: priority++,
-    });
-  }
-
-  if (m.maxDrawdown != null && m.maxDrawdown > 0.08) {
+  // 5) Koruma sınıfı yoksa nazik hatırlatma
+  if ((comp.goldW ?? 0) + (comp.fxW ?? 0) < 0.02 && comp.fundW > 0.7) {
     recs.push({
       action: "HOLD",
       assetClass: "GOLD",
-      title: "Koruma payını kontrol edin",
-      rationale: `Bu ay en kötü düşüş ${pct(m.maxDrawdown)} oldu. Altın veya döviz gibi koruma payı var mı bakın.`,
+      symbol: null,
+      title: "İsterseniz küçük bir koruma payı düşünün",
+      rationale:
+        "Portföy çoğunlukla fon tarafında; altın veya döviz gibi küçük bir tampon yok. Zorunlu değil — sadece sürpriz haberlere karşı isteğe bağlı çeşitlilik.",
       priority: priority++,
     });
   }
@@ -145,7 +222,7 @@ function buildTemplateRecommendations(
     });
   }
 
-  return recs;
+  return recs.slice(0, 5);
 }
 
 function buildTemplateTopHolding(
@@ -180,7 +257,7 @@ export function buildTemplateNarrative(
 ): MonthlyAiNarrative {
   const month = monthNameTr(periodLabel);
   const worldEvents = buildTemplateWorldEvents(periodLabel, m);
-  const positionRecommendations = buildTemplateRecommendations(m);
+  const positionRecommendations = buildTemplateRecommendations(m, holding);
   const top =
     holding ??
     (m.allocationBySymbol[0]
@@ -232,12 +309,14 @@ function sanitizeApiKey(raw: string | undefined): string | null {
 
 /** Basit sayılar — modele teknik jargon taşımayalım. */
 function metricsForPrompt(m: MonthlyAiMetrics) {
+  const comp = portfolioComposition(m);
   return {
     ayBasiPortfoy: m.startValue,
     aySonuPortfoy: m.endValue,
     yatirilanAnaPara: m.investedCapital,
     buAyKazancZarar: m.nominalPnl,
     buAyYuzde: m.nominalReturn,
+    toplamKumulatifGetiri: comp.totalReturn,
     enKotuDusus: m.maxDrawdown,
     enIyiYukselis: m.maxRise,
     dalgalanmaYillik: m.volatilityAnnual,
@@ -257,6 +336,15 @@ function metricsForPrompt(m: MonthlyAiMetrics) {
     borsayaGoreFark: m.alphaVsBist,
     enBuyukPozisyonPayi: m.largestWeight,
     ilkUcPay: m.top3Weight,
+    dogrudanHisseVarMi: comp.hasDirectEquity,
+    fonAgirlikliMi: comp.mostlyFunds,
+    sinifPaylari: {
+      fon: comp.fundW,
+      hisse: comp.equityW,
+      altin: comp.goldW,
+      doviz: comp.fxW,
+      nakit: comp.cashW,
+    },
     dagilim: m.allocationBySymbol.slice(0, 8).map((s) => ({
       ad: s.label,
       pay: s.weight,
@@ -323,6 +411,9 @@ Kurallar:
 - worldEvents’te genel laf yasak (“siyasi belirsizlik” yetmez). Ülke, olay, senaryo yaz.
 - topHoldingSpotlight’ta X/Twitter ve web brifingine dayan; uydurma alıntı yazma.
 - BIST yüzdesini yalnızca verilen sayılardan yaz; uydurma / abartma.
+- positionRecommendations: SAÇMA / BOŞ “koruyun” deme. Her maddede NEDEN yaz (kâr oranı, düzenli getiri, yoğunlaşma, portföyde ne var/yok).
+- Portföyde doğrudan hisse yoksa: riskli hisse alımını beklet / plan varsa ertele diyebilirsin.
+- Ana ürün zaten ağırsa: “koruyun çünkü X kârdasınız / düzenli duruyor” de; gerekirse “yeni parayı başka yere” de — sadece “koruyun” yetmez.
 - Sadece geçerli JSON döndür.`,
   };
 
@@ -362,13 +453,20 @@ JSON şema:
     "risksAndWatch": "riskler ve neye bakılmalı",
     "sourcesNote": "hangi kaynak türleri (X, TEFAS, haber…)"
   },
-  "positionRecommendations": [{"action":"INCREASE|DECREASE|HOLD|SHIFT_CLASS|PARK_CASH","assetClass":"FUND|EQUITY|CASH|GOLD|FX","symbol":null,"title":"kısa başlık","rationale":"neden","priority":1}],
+  "positionRecommendations": [{"action":"INCREASE|DECREASE|HOLD|SHIFT_CLASS|PARK_CASH","assetClass":"FUND|EQUITY|CASH|GOLD|FX","symbol":"PBR veya null","title":"kısa başlık","rationale":"2-4 cümle NEDEN: kâr %, düzenli getiri, portföyde hisse var/yok, yoğunlaşma — boş 'koruyun' yasak","priority":1}],
   "outlook": "gelecek ay: somut riskler ve sakin öneri, 4-6 cümle"
 }
 
 worldEvents: 5-7 madde.
 topHoldingSpotlight: zorunlu (ürün varsa); brifinge sadık kal, uydurma alıntı yok.
-positionRecommendations: 3-5 madde; mümkünse en ağırlıklı ürüne de değin.
+
+positionRecommendations — 4-5 madde, örnek tarzı (kendi sayılarınla yaz):
+1) Ana ürün (örn. PBR): "Şimdilik tutun çünkü toplamda ~%13 kârdasınız; düzenli getiri gibi duruyor. Yeni büyük parayı aynı ürüne yığmayın."
+2) Hisse yoksa: "Doğrudan hisse / yüksek riskli ürün alımını bekletin; planınız varsa erteleyin veya çok küçük başlayın."
+3) Yoğunlaşma: "Mevcutı bozmak zorunda değilsiniz; yeni birikimi başka yere bölün."
+4) Vadeli/enflasyon veya dünya olayına bağlı 1 pratik madde.
+Her rationale içinde sayı veya somut gerekçe olsun.
+
 Sayıları uydurma; verilenlere uy.`,
   };
 
