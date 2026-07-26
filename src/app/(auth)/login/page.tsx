@@ -18,11 +18,13 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const busy = loginLoading || demoLoading;
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    setLoginLoading(true);
     try {
       await clientFetch("/api/auth/login", {
         method: "POST",
@@ -34,12 +36,12 @@ export default function LoginPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Giriş başarısız");
     } finally {
-      setLoading(false);
+      setLoginLoading(false);
     }
   }
 
   async function handleDemo() {
-    setLoading(true);
+    setDemoLoading(true);
     try {
       await clientFetch("/api/auth/demo", { method: "POST" });
       toast.success("Demo oturumu açıldı");
@@ -48,7 +50,7 @@ export default function LoginPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Demo girişi başarısız");
     } finally {
-      setLoading(false);
+      setDemoLoading(false);
     }
   }
 
@@ -92,8 +94,8 @@ export default function LoginPage() {
                 required
               />
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Giriş yapılıyor…" : "Giriş Yap"}
+            <Button type="submit" className="w-full" disabled={busy}>
+              {loginLoading ? "Giriş yapılıyor…" : "Giriş Yap"}
             </Button>
           </form>
 
@@ -113,9 +115,9 @@ export default function LoginPage() {
                 variant="outline"
                 className="w-full"
                 onClick={handleDemo}
-                disabled={loading}
+                disabled={busy}
               >
-                Demo Hesap ile Giriş
+                {demoLoading ? "Demo açılıyor…" : "Demo Hesap ile Giriş"}
               </Button>
             </>
           )}

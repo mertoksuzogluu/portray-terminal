@@ -13,7 +13,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ErrorState } from "@/components/shared/error-state";
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton";
+import { PageHeader } from "@/components/shared/page-header";
 import { ApiError, clientFetch } from "@/lib/api/client-fetch";
 import { formatDateTR } from "@/lib/format/tr";
 
@@ -97,82 +99,94 @@ export default function AiAnalystPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">AI Analist</h1>
-          <p className="text-sm text-muted-foreground">
-            Ayda en fazla 2 rapor: 1 kez «Bu ayı üret», ayın 30’unda bir otomatik
-            rapor daha
-          </p>
-          {quota && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Manuel hak: {quota.manualRemaining}/{quota.maxManualPerMonth}
-              {quota.manualUsedThisMonth
-                ? " · Bu ay kullandınız · 30’unda otomatik yine gelecek"
-                : " · Bu ay henüz kullanmadınız"}
-            </p>
-          )}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2"
-          disabled={generating || !canManual}
-          onClick={() => void handleGenerate()}
-        >
-          {generating ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          {generating
-            ? "Üretiliyor…"
-            : canManual
-              ? "Bu ayı üret"
-              : "Manuel hak bitti"}
-        </Button>
-      </div>
+      <PageHeader
+        title="AI Analist"
+        description="Ayda en fazla 2 rapor: 1 manuel + ayın 30’unda 1 otomatik"
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            disabled={generating || !canManual}
+            onClick={() => void handleGenerate()}
+          >
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            {generating
+              ? "Üretiliyor…"
+              : canManual
+                ? "Bu ayı üret"
+                : "Manuel hak bitti"}
+          </Button>
+        }
+      />
+
+      {quota && (
+        <p className="-mt-3 text-xs text-muted-foreground">
+          Manuel hak: {quota.manualRemaining}/{quota.maxManualPerMonth}
+          {quota.manualUsedThisMonth
+            ? " · Bu ay kullandınız · 30’unda otomatik yine gelecek"
+            : " · Bu ay henüz kullanmadınız"}
+        </p>
+      )}
 
       {loading ? (
         <LoadingSkeleton />
-      ) : error ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            {error}
-          </CardContent>
-        </Card>
+      ) : error && reports.length === 0 ? (
+        <ErrorState message={error} onRetry={() => void load()} />
       ) : reports.length === 0 ? (
         <EmptyState
           icon={Brain}
           title="Henüz aylık rapor yok"
-          description="Ayda 1 kez manuel üretebilirsiniz; ayın 30’unda otomatik rapor da oluşur."
+          description={
+            canManual
+              ? "İlk raporunuzu şimdi üretebilirsiniz. Ayın 30’unda otomatik bir rapor daha oluşur."
+              : "Manuel hakkınız bu ay doldu. Ayın 30’unda otomatik rapor gelecek."
+          }
+          actionLabel={canManual ? "Bu ayı üret" : undefined}
+          onAction={canManual ? () => void handleGenerate() : undefined}
         />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {reports.map((r) => (
-            <Link key={r.id} href={`/reports/${r.id}`} className="block">
-              <Card className="h-full transition-colors hover:border-foreground/20">
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-base">{r.title}</CardTitle>
-                    <Badge variant="outline">{triggerLabel(r.reportType)}</Badge>
-                  </div>
-                  <CardDescription>
-                    {formatDateTR(r.periodStart)} – {formatDateTR(r.periodEnd)}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="line-clamp-3 text-sm text-muted-foreground">
-                    {r.summary}
-                  </p>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Oluşturulma: {formatDateTR(r.createdAt)}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
+        <>
+          {error ? (
+            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-200">
+              {error}
+            </p>
+          ) : null}
+          <div className="grid gap-4 md:grid-cols-2">
+            {reports.map((r) => (
+              <Link key={r.id} href={`/reports/${r.id}`} className="block">
+                <Card className="h-full shadow-sm transition-colors hover:border-foreground/20 hover:bg-muted/20">
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-base leading-snug">
+                        {r.title}
+                      </CardTitle>
+                      <Badge variant="outline">
+                        {triggerLabel(r.reportType)}
+                      </Badge>
+                    </div>
+                    <CardDescription>
+                      {formatDateTR(r.periodStart)} –{" "}
+                      {formatDateTR(r.periodEnd)}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="line-clamp-3 text-sm text-muted-foreground">
+                      {r.summary}
+                    </p>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Oluşturulma: {formatDateTR(r.createdAt)}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

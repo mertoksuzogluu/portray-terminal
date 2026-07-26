@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataQualityBadge } from "@/components/shared/data-quality-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
+import { PageHeader } from "@/components/shared/page-header";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { PnlValue } from "@/components/shared/pnl-value";
 import { clientFetch } from "@/lib/api/client-fetch";
@@ -152,7 +153,7 @@ export default function PortfolioPage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <h1 className="font-display text-2xl">Portföy</h1>
+        <PageHeader title="Portföy" />
         <TableSkeleton />
       </div>
     );
@@ -161,7 +162,7 @@ export default function PortfolioPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <h1 className="font-display text-2xl">Portföy</h1>
+        <PageHeader title="Portföy" />
         <ErrorState message={error} onRetry={() => window.location.reload()} />
       </div>
     );
@@ -170,13 +171,13 @@ export default function PortfolioPage() {
   if (data.length === 0) {
     return (
       <div className="space-y-4">
-        <h1 className="font-display text-2xl">Portföy</h1>
+        <PageHeader title="Portföy" description="Açık pozisyonlarınız" />
         <EmptyState
           icon={Briefcase}
           title="Pozisyon bulunamadı"
           description="Henüz açık pozisyonunuz yok. İşlem ekleyerek başlayın."
-          actionLabel="İşlem Ekle"
-          onAction={() => (window.location.href = "/transactions")}
+          actionLabel="İşlem ekle"
+          href="/transactions"
         />
       </div>
     );
@@ -184,14 +185,10 @@ export default function PortfolioPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Portföy</h1>
-          <p className="text-sm text-muted-foreground">
-            {data.length} pozisyon · Toplam {formatMoney(totalValue)}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Portföy"
+        description={`${data.length} pozisyon · Toplam ${formatMoney(totalValue)}`}
+      />
 
       <Card>
         <CardHeader>

@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorState } from "@/components/shared/error-state";
+import { PageHeader } from "@/components/shared/page-header";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { clientFetch } from "@/lib/api/client-fetch";
 import {
@@ -566,7 +567,7 @@ export default function TransactionsPage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <h1 className="font-display text-2xl">İşlemler</h1>
+        <PageHeader title="İşlemler" />
         <TableSkeleton />
       </div>
     );
@@ -575,7 +576,7 @@ export default function TransactionsPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <h1 className="font-display text-2xl">İşlemler</h1>
+        <PageHeader title="İşlemler" />
         <ErrorState message={error} onRetry={load} />
       </div>
     );
@@ -583,28 +584,26 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">İşlemler</h1>
-          <p className="text-sm text-muted-foreground">
-            Yanlış eklediğiniz alımı buradan düzenleyebilir veya silebilirsiniz.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={() => setImportOpen(true)}>
-            <Upload className="mr-1 h-4 w-4" />
-            CSV
-          </Button>
-          <Button type="button" variant="secondary" onClick={openCreate}>
-            <Plus className="mr-1 h-4 w-4" />
-            Yeni işlem
-          </Button>
-          <Button type="button" onClick={openAssetDialog}>
-            <Plus className="mr-1 h-4 w-4" />
-            Hızlı alış
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="İşlemler"
+        description="Yanlış eklediğiniz alımı buradan düzenleyebilir veya silebilirsiniz."
+        actions={
+          <>
+            <Button type="button" variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-1 h-4 w-4" />
+              CSV
+            </Button>
+            <Button type="button" variant="secondary" onClick={openCreate}>
+              <Plus className="mr-1 h-4 w-4" />
+              Yeni işlem
+            </Button>
+            <Button type="button" onClick={openAssetDialog}>
+              <Plus className="mr-1 h-4 w-4" />
+              Hızlı alış
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Card className="cursor-pointer transition-colors hover:bg-muted/30" onClick={openAssetDialog}>

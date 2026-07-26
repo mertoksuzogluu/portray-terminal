@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Bell } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
+  Bell,
+  Briefcase,
+} from "lucide-react";
 import { Suspense } from "react";
 import { AllocationChart } from "@/components/charts/allocation-chart";
 import { PortfolioValueChart } from "@/components/charts/portfolio-value-chart";
@@ -11,12 +17,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/shared/empty-state";
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton";
+import { PageHeader } from "@/components/shared/page-header";
 import { PnlValue } from "@/components/shared/pnl-value";
 import { RefreshPricesButton } from "@/components/shared/refresh-prices-button";
+import { buttonVariants } from "@/components/ui/button";
 import { ApiError, serverFetch } from "@/lib/api/server-fetch";
 import { formatDateTR, formatMoney, formatPercentPlain } from "@/lib/format/tr";
 import { DISCLAIMER } from "@/lib/constants/nav";
+import { cn } from "@/lib/utils/cn";
 
 interface DashboardData {
   summary: {
@@ -62,50 +72,34 @@ async function DashboardContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Portföy Özeti</h1>
-          <p className="text-sm text-muted-foreground">
-            {summary.snapshotDate
-              ? `Son güncelleme: ${formatDateTR(summary.snapshotDate)}`
-              : "Henüz anlık görüntü yok"}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/transactions"
-            className="inline-flex h-9 items-center rounded-md border border-border bg-card px-3 text-sm hover:bg-muted"
-          >
-            İşlem ekle
-          </Link>
-          <RefreshPricesButton />
-        </div>
-      </div>
+      <PageHeader
+        title="Portföy Özeti"
+        description={
+          summary.snapshotDate
+            ? `Son güncelleme: ${formatDateTR(summary.snapshotDate)}`
+            : "Henüz anlık görüntü yok — işlem ekleyerek başlayın"
+        }
+        actions={
+          <>
+            <Link
+              href="/transactions"
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              İşlem ekle
+            </Link>
+            <RefreshPricesButton />
+          </>
+        }
+      />
 
       {isEmpty ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="font-display text-lg">Portföyünüz boş</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Hızlı alış ile fon veya hisse ekleyin. Yanlış kayıtları İşlemler’den düzenleyip
-              silebilirsiniz.
-            </p>
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-              <Link
-                href="/transactions"
-                className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                İşlem ekle
-              </Link>
-              <Link
-                href="/recommendations"
-                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-              >
-                Önerilere bak →
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Briefcase}
+          title="Portföyünüz boş"
+          description="Fon veya hisse ekleyerek başlayın. Yanlış kayıtları İşlemler’den düzenleyebilirsiniz."
+          actionLabel="İşlem ekle"
+          href="/transactions"
+        />
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-3">
