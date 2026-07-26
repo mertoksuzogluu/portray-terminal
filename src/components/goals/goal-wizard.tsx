@@ -67,8 +67,8 @@ export function GoalWizard({
       if (!Number.isFinite(monthly) || monthly < 0) {
         throw new Error("Geçerli bir aylık kapasite girin.");
       }
-      if (!Number.isFinite(expectedReturn) || expectedReturn < 0 || expectedReturn > 1) {
-        throw new Error("Geçerli bir getiri girin (örn. 18).");
+      if (!Number.isFinite(expectedReturn) || expectedReturn < 0 || expectedReturn > 2) {
+        throw new Error("Geçerli bir getiri girin (0–200, örn. 18).");
       }
 
       const kind: GoalTargetKind =

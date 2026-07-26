@@ -79,4 +79,36 @@ describe("goals projection", () => {
     // 200k * 12 / 0.2 = 12M
     expect(r.effectiveTarget).toBeCloseTo(12_000_000, 0);
   });
+
+  it("YTD actual uses 0 year-start when portfolio began this year", () => {
+    const r = projectGoal({
+      currentValue: 4_800_000,
+      targetAmount: 25_000_000,
+      targetKind: "LUMP_SUM",
+      targetDate: new Date("2032-12-31"),
+      monthlyContribution: 100_000,
+      contributionGrowth: "FIXED",
+      expectedReturnAnnual: 0.2,
+      valueAtYearStart: 0,
+      ytdMonthsElapsed: 0.3,
+      asOf: new Date(Date.UTC(2026, 6, 26)),
+    });
+    expect(r.ytd.actual).toBeCloseTo(4_800_000, 0);
+  });
+
+  it("YTD actual subtracts prior-year closing value", () => {
+    const r = projectGoal({
+      currentValue: 12_000_000,
+      targetAmount: 25_000_000,
+      targetKind: "LUMP_SUM",
+      targetDate: new Date("2032-12-31"),
+      monthlyContribution: 100_000,
+      contributionGrowth: "FIXED",
+      expectedReturnAnnual: 0.2,
+      valueAtYearStart: 10_000_000,
+      ytdMonthsElapsed: 7,
+      asOf: new Date(Date.UTC(2026, 6, 26)),
+    });
+    expect(r.ytd.actual).toBeCloseTo(2_000_000, 0);
+  });
 });

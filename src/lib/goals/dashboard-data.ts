@@ -4,6 +4,7 @@ import {
   getPortfolioSnapshots,
 } from "@/lib/api/portfolio-context";
 import { getDefaultPortfolioId } from "@/lib/auth/session";
+import { istanbulToday, toDateKey } from "@/lib/utils/dates";
 import { projectGoal } from "./projection";
 import { serializeGoal } from "./serialize";
 import { syncAchievements } from "./achievements";
@@ -14,6 +15,19 @@ import {
   type CoachPayload,
 } from "./coach";
 import type { ContributionGrowth, GoalTargetKind, GoalType } from "./types";
+
+/** İstanbul takvim yılında 1 Ocak (UTC date-only). */
+function istanbulYearStart(now = new Date()): Date {
+  const key = toDateKey(istanbulToday(now));
+  const year = Number(key.slice(0, 4));
+  return new Date(Date.UTC(year, 0, 1));
+}
+
+/** İki tarih arası ay (kesirli). */
+function monthsBetweenDates(from: Date, to: Date): number {
+  const ms = to.getTime() - from.getTime();
+  return Math.max(ms / (1000 * 60 * 60 * 24 * 30.4375), 1 / 30);
+}
 
 function num(v: { toString(): string } | number): number {
   return typeof v === "number" ? v : Number(v.toString());
@@ -55,13 +69,15 @@ export async function loadGoalsDashboard(userId: string, goalId?: string | null)
     if (snaps.length >= 2) {
       previousValue = num(snaps[snaps.length - 2].totalMarketValue);
     }
-    const year = new Date().getFullYear();
-    const earliestYear = snaps.find((s) => s.snapshotDate.getFullYear() === year);
-    valueAtYearStart = earliestYear
-      ? num(earliestYear.totalMarketValue)
-      : snaps[0]
-        ? num(snaps[0].totalMarketValue)
-        : currentValue;
+
+    // Yıl başı = 1 Ocak’tan ÖNCEKİ son snapshot. Yoksa 0 (portföy bu yıl başladı).
+    // İlk 2026 snapshot’ını yıl başı sanmak, başlangıç sermayesini “gerçekleşen”den düşüyordu.
+    const yearStart = istanbulYearStart();
+    const beforeYear = await prisma.portfolioDailySnapshot.findFirst({
+      where: { portfolioId, snapshotDate: { lt: yearStart } },
+      orderBy: { snapshotDate: "desc" },
+    });
+    valueAtYearStart = beforeYear ? num(beforeYear.totalMarketValue) : 0;
 
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 90);
@@ -74,6 +90,14 @@ export async function loadGoalsDashboard(userId: string, goalId?: string | null)
     }
   }
 
+  const asOf = istanbulToday();
+  const periodStart = (() => {
+    const ys = istanbulYearStart(asOf);
+    const created = active.createdAt;
+    return created > ys ? created : ys;
+  })();
+  const ytdMonthsElapsed = monthsBetweenDates(periodStart, asOf);
+
   const projection = projectGoal({
     currentValue,
     targetAmount: num(active.targetAmount),
@@ -82,8 +106,10 @@ export async function loadGoalsDashboard(userId: string, goalId?: string | null)
     monthlyContribution: num(active.monthlyContribution),
     contributionGrowth: active.contributionGrowth as ContributionGrowth,
     expectedReturnAnnual: num(active.expectedReturnAnnual),
-    valueAtYearStart,
+    valueAtYearStart: valueAtYearStart ?? 0,
     previousValue,
+    ytdMonthsElapsed,
+    asOf,
   });
 
   // Freedom prefs override score target

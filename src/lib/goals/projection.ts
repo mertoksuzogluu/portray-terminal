@@ -215,11 +215,22 @@ export function projectGoal(input: ProjectionInput): ProjectionResult {
     };
   });
 
-  const yearStart = input.valueAtYearStart ?? currentValue;
+  // null/undefined → veri yok; 0 → yıl başında portföy yoktu (doğru)
+  const yearStart =
+    input.valueAtYearStart === undefined || input.valueAtYearStart === null
+      ? currentValue
+      : Math.max(0, input.valueAtYearStart);
   const actualYtd = currentValue - yearStart;
-  const monthsElapsed = Math.max(1, asOf.getMonth() + 1);
+
+  const calendarMonth = asOf.getUTCMonth() + 1;
+  const monthsElapsed = Math.max(
+    1 / 30,
+    input.ytdMonthsElapsed != null && input.ytdMonthsElapsed > 0
+      ? input.ytdMonthsElapsed
+      : calendarMonth
+  );
   const monthlyR = monthlyRate(input.expectedReturnAnnual);
-  // Planlanan YTD: aylık katkı * ay + yaklaşık getiri dilimi
+  // Planlanan YTD: aylık katkı * ay + yıl başı sermaye üzerinden getiri
   const plannedContrib = input.monthlyContribution * monthsElapsed;
   const plannedGrowth = yearStart * (Math.pow(1 + monthlyR, monthsElapsed) - 1);
   const plannedYtd = plannedContrib + plannedGrowth;

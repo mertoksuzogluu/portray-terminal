@@ -23,7 +23,7 @@ const createSchema = z.object({
   contributionGrowth: z
     .enum(["FIXED", "ANNUAL_INCREASE", "SALARY_LINKED", "UNSURE"])
     .default("FIXED"),
-  expectedReturnAnnual: z.number().min(0).max(1),
+  expectedReturnAnnual: z.number().min(0).max(2),
   isPrimary: z.boolean().optional(),
   freedomPrefs: z
     .object({

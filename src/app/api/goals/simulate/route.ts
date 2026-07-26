@@ -11,7 +11,7 @@ import type { ContributionGrowth, GoalTargetKind } from "@/lib/goals/types";
 const schema = z.object({
   goalId: z.string().min(1),
   monthlyContribution: z.number().min(0).optional(),
-  expectedReturnAnnual: z.number().min(0).max(1).optional(),
+  expectedReturnAnnual: z.number().min(0).max(2).optional(),
 });
 
 export async function POST(req: NextRequest) {

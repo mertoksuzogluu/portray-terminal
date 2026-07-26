@@ -24,10 +24,15 @@ export interface ProjectionInput {
   monthlyContribution: number;
   contributionGrowth: ContributionGrowth;
   expectedReturnAnnual: number;
-  /** Yıl başındaki portföy değeri (YTD) */
+  /**
+   * Takvim yılı başındaki (1 Ocak öncesi son) portföy değeri.
+   * Yıl başında portföy yoksa 0 olmalı — ilk snapshot’ı yıl başı sanma.
+   */
   valueAtYearStart?: number | null;
   /** Dünkü / önceki snapshot (bugünkü ilerleme) */
   previousValue?: number | null;
+  /** Planlanan YTD için ay sayısı (verilmezse takvim ayı) */
+  ytdMonthsElapsed?: number | null;
   asOf?: Date;
 }
 

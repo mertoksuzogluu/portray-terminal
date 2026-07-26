@@ -64,27 +64,39 @@ export function GoalProgressYtd({
   actual: number;
   comment: string;
 }) {
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("tr-TR", {
+  const fmt = (n: number) => {
+    const abs = new Intl.NumberFormat("tr-TR", {
       style: "currency",
       currency: "TRY",
       maximumFractionDigits: 0,
-    }).format(n);
+    }).format(Math.abs(n));
+    if (n > 0) return `+${abs}`;
+    if (n < 0) return `-${abs}`;
+    return abs;
+  };
 
   return (
     <GlassCard>
       <h3 className="font-display text-lg tracking-tight">Bu yıl hedef</h3>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        Portföy değerinin yıl başından (veya bu yılki başlangıçtan) bu yana
+        değişimi
+      </p>
       <div className="mt-4 grid grid-cols-2 gap-4">
         <div>
           <p className="text-xs text-muted-foreground">Planlanan</p>
           <p className="font-display text-xl tracking-tight text-muted-foreground">
-            +{fmt(planned)}
+            {fmt(planned)}
           </p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Gerçekleşen</p>
-          <p className="font-display text-xl tracking-tight text-primary">
-            +{fmt(actual)}
+          <p
+            className={`font-display text-xl tracking-tight ${
+              actual >= 0 ? "text-primary" : "text-negative"
+            }`}
+          >
+            {fmt(actual)}
           </p>
         </div>
       </div>

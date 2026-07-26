@@ -90,6 +90,9 @@ export function WhatIfSimulator({
   );
 }
 
+const RETURN_MIN = 0;
+const RETURN_MAX = 2; // %200
+
 export function ReturnSimulator({
   currentValue,
   targetAmount,
@@ -107,10 +110,18 @@ export function ReturnSimulator({
   contributionGrowth: ContributionGrowth;
   expectedReturnAnnual: number;
 }) {
-  const [ret, setRet] = useState(expectedReturnAnnual);
+  const clampRet = (v: number) =>
+    Math.min(RETURN_MAX, Math.max(RETURN_MIN, v));
+
+  const [ret, setRet] = useState(() => clampRet(expectedReturnAnnual));
+  const [pctInput, setPctInput] = useState(() =>
+    String(Math.round(clampRet(expectedReturnAnnual) * 100))
+  );
 
   useEffect(() => {
-    setRet(expectedReturnAnnual);
+    const next = clampRet(expectedReturnAnnual);
+    setRet(next);
+    setPctInput(String(Math.round(next * 100)));
   }, [expectedReturnAnnual]);
 
   const result = useMemo(
@@ -139,28 +150,56 @@ export function ReturnSimulator({
     ]
   );
 
+  function applyPct(raw: string) {
+    setPctInput(raw);
+    const n = Number(raw.replace(",", "."));
+    if (!Number.isFinite(n)) return;
+    setRet(clampRet(n / 100));
+  }
+
   return (
     <GlassCard>
       <h3 className="font-display text-lg tracking-tight">Getiri Simülatörü</h3>
       <p className="mt-1 text-xs text-muted-foreground">
-        Beklenen yıllık getiriyi değiştir — kayıt edilmez.
+        Beklenen yıllık getiriyi değiştir — kayıt edilmez. (0–200%)
       </p>
       <div className="mt-4">
-        <div className="mb-2 flex justify-between text-sm">
+        <div className="mb-2 flex items-center justify-between gap-3 text-sm">
           <span>Yıllık getiri</span>
-          <span className="font-medium text-accent">
-            %{(ret * 100).toFixed(0)}
-          </span>
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground">%</span>
+            <input
+              type="number"
+              min={0}
+              max={200}
+              step={1}
+              value={pctInput}
+              onChange={(e) => applyPct(e.target.value)}
+              onBlur={() =>
+                setPctInput(String(Math.round(ret * 100)))
+              }
+              className="w-16 rounded-md border border-white/10 bg-black/20 px-2 py-1 text-right font-medium text-accent tabular-nums outline-none focus:border-accent/50"
+            />
+          </div>
         </div>
         <input
           type="range"
-          min={0.05}
-          max={0.4}
+          min={RETURN_MIN}
+          max={RETURN_MAX}
           step={0.01}
           value={ret}
-          onChange={(e) => setRet(Number(e.target.value))}
+          onChange={(e) => {
+            const next = clampRet(Number(e.target.value));
+            setRet(next);
+            setPctInput(String(Math.round(next * 100)));
+          }}
           className="w-full accent-accent"
         />
+        <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+          <span>%0</span>
+          <span>%100</span>
+          <span>%200</span>
+        </div>
       </div>
       <p className="mt-4 text-sm leading-relaxed">
         {result.label}
