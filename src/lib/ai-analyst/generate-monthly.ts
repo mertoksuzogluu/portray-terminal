@@ -1,8 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { marketDateOnly, toDateKey } from "@/lib/utils/dates";
+import { ensureBistHistory } from "./bist-history";
 import { buildMonthlyAiMetrics } from "./metrics";
 import { buildAiNarrative } from "./narrative";
+import { fetchWorldMarketBriefing } from "./world-briefing";
 import {
   MONTHLY_AI_REPORT_TYPE,
   type MonthlyAiReportContent,
@@ -70,13 +72,26 @@ export async function generateMonthlyAiAnalystReports(
   let lastSource: "openai" | "template" | null = null;
   let lastAiError: string | null = null;
 
+  // BIST: Yahoo geçmişi (demo carry-forward ile karışmasın)
+  await ensureBistHistory(periodStart, periodEnd);
+
+  const monthName = monthTitleTr(periodLabel);
+  const world = await fetchWorldMarketBriefing({
+    periodLabel,
+    monthName,
+    periodStart: toDateKey(periodStart),
+    periodEnd: toDateKey(periodEnd),
+  });
+
   for (const portfolio of portfolios) {
     const metrics = await buildMonthlyAiMetrics(
       portfolio.id,
       periodStart,
       periodEnd
     );
-    const narrative = await buildAiNarrative(periodLabel, metrics);
+    const narrative = await buildAiNarrative(periodLabel, metrics, {
+      worldBriefing: world.briefing,
+    });
     lastSource = narrative.source;
     lastAiError = narrative.aiError ?? null;
 
@@ -93,7 +108,6 @@ export async function generateMonthlyAiAnalystReports(
       narrative,
     };
 
-    const monthName = monthTitleTr(periodLabel);
     const title = `${portfolio.name} — AI Analist · ${monthName}`;
     const summary = narrative.executiveSummary.slice(0, 400);
 

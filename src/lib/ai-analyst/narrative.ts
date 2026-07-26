@@ -222,7 +222,8 @@ function metricsForPrompt(m: MonthlyAiMetrics) {
 
 export async function buildAiNarrative(
   periodLabel: string,
-  m: MonthlyAiMetrics
+  m: MonthlyAiMetrics,
+  options?: { worldBriefing?: string | null }
 ): Promise<MonthlyAiNarrative> {
   const fallback = buildTemplateNarrative(periodLabel, m);
   const apiKey = sanitizeApiKey(process.env.OPENAI_API_KEY);
@@ -236,6 +237,7 @@ export async function buildAiNarrative(
 
   const month = monthNameTr(periodLabel);
   const model = sanitizeApiKey(process.env.OPENAI_MODEL) || "gpt-4o-mini";
+  const briefing = options?.worldBriefing?.trim() || "";
 
   const system = {
     role: "system",
@@ -244,7 +246,8 @@ Kurallar:
 - Yatırım tavsiyesi gibi emir verme; "düşünebilirsin", "bakılabilir" de.
 - Finans jargonu kullanma (alpha, beta, sharpe, hurdle, volatilite, nominal, sortino, HHI yok).
 - Bunun yerine: kazanç, düşüş, yükseliş, dalgalanma, enflasyon, vadeli, borsa, pay yaz.
-- Kısa cümleler. Herkesin anlayacağı dil.
+- worldEvents’te genel laf yasak (“siyasi belirsizlik” yetmez). Ülke, olay, senaryo yaz.
+- BIST yüzdesini yalnızca verilen sayılardan yaz; uydurma / abartma.
 - Sadece geçerli JSON döndür.`,
   };
 
@@ -253,19 +256,25 @@ Kurallar:
     content: `Ay: ${month} (${periodLabel})
 Sayılar (oranlar 0.05 = %5): ${JSON.stringify(metricsForPrompt(m))}
 
+${
+  briefing
+    ? `GÜNCEL DÜNYA BRİFİNGİ (web aramasından — worldEvents’i bundan genişlet, uydurma ekleme):\n${briefing}\n`
+    : "Web brifingi yok; worldEvents’te o aya özgü somut jeopolitik/makro senaryolar yaz (ör. Orta Doğu gerilimi → petrol/altın; Fed faizi → risk iştahı). Genel slogan yazma.\n"
+}
+
 JSON şema:
 {
   "executiveSummary": "3-5 cümle, günlük dilde ay özeti",
   "performanceAnalysis": "ne kadar kazanıldı/kayıp, ay başı-sonu",
   "riskAnalysis": "en kötü düşüş, en iyi yükseliş, dalgalanma, tek pozisyon riski — sade dil",
-  "benchmarkComparison": "BIST 100 ile karşılaştırma, sade dil",
-  "worldEvents": [{"title":"...","impact":"...","implication":"..."}],
-  "positionRecommendations": [{"action":"INCREASE|DECREASE|HOLD|SHIFT_CLASS|PARK_CASH","assetClass":"FUND|EQUITY|CASH|GOLD|FX","symbol":null,"title":"kısa başlık","rationale":"neden, sade dil","priority":1}],
-  "outlook": "gelecek ay için 3-4 cümle sakin öneri"
+  "benchmarkComparison": "BIST 100 ile karşılaştırma — SADECE verilen bist100Yuzde sayısını kullan",
+  "worldEvents": [{"title":"somut başlık (ülke/olay)","impact":"ne oldu + hangi varlık (borsa/döviz/altın/petrol)","implication":"iyi/kötü senaryo ve portföy için ne anlama gelir"}],
+  "positionRecommendations": [{"action":"INCREASE|DECREASE|HOLD|SHIFT_CLASS|PARK_CASH","assetClass":"FUND|EQUITY|CASH|GOLD|FX","symbol":null,"title":"kısa başlık","rationale":"neden + hangi dünya olayına bağlı, sade dil","priority":1}],
+  "outlook": "gelecek ay: somut riskler ve sakin öneri, 4-6 cümle"
 }
 
-worldEvents: 3-5 madde, o aya dair dünya/Türkiye gelişmeleri ve portföye etkisi.
-positionRecommendations: 3-5 madde, sayılara dayalı.
+worldEvents: 5-7 madde, her biri detaylı (2-4 cümle impact + implication).
+positionRecommendations: 3-5 madde; mümkünse worldEvents’e bağla.
 Sayıları uydurma; verilenlere uy.`,
   };
 

@@ -128,24 +128,41 @@ export async function buildMonthlyAiMetrics(
   let bistReturn: number | null = null;
   let benchDailyByDate = new Map<string, number>();
 
+  // BIST kıyası: portföy gözlem penceresi (ay başı demo fiyatıyla karışmasın)
+  const bistFrom = first?.snapshotDate ?? periodStart;
+  const bistTo = last?.snapshotDate ?? periodEnd;
+
   if (xu100) {
     const benchPrices = await prisma.benchmarkPrice.findMany({
       where: {
         benchmarkId: xu100.id,
-        priceDate: { gte: periodStart, lte: periodEnd },
+        priceDate: { gte: bistFrom, lte: bistTo },
+        NOT: { source: "demo-seed" },
       },
       orderBy: { priceDate: "asc" },
     });
-    // Kaynak tutarlılığı: her gün için son çekilen satır
-    const byDate = new Map<string, { value: number; fetchedAt: number }>();
-    for (const row of benchPrices) {
-      if (row.source === "demo-seed") continue;
+
+    const LIVE = new Set([
+      "yahoo_finance",
+      "twelve_data",
+      "twelve_data_fx",
+      "tcmb_evds",
+      "tcmb_evds_fx",
+    ]);
+    const hasLive = benchPrices.some((r) => LIVE.has(r.source));
+    // Canlı kaynak varsa yalnızca onu kullan — carry-forward(~10.7k) + yahoo(~13.9k) = sahte %30
+    const usable = hasLive
+      ? benchPrices.filter((r) => LIVE.has(r.source))
+      : benchPrices.filter((r) => r.source !== "carry-forward");
+
+    const byDate = new Map<string, { value: number; rank: number }>();
+    for (const row of usable) {
       const key = toDateKey(row.priceDate);
       const value = Number(row.value.toString());
-      const fetchedAt = row.fetchedAt.getTime();
+      const rank = LIVE.has(row.source) ? 0 : 10;
       const prev = byDate.get(key);
-      if (!prev || fetchedAt > prev.fetchedAt) {
-        byDate.set(key, { value, fetchedAt });
+      if (!prev || rank < prev.rank) {
+        byDate.set(key, { value, rank });
       }
     }
     const dates = [...byDate.keys()].sort();
@@ -158,7 +175,10 @@ export async function buildMonthlyAiMetrics(
       const prev = byDate.get(dates[i - 1]!)!.value;
       const cur = byDate.get(dates[i]!)!.value;
       if (prev > 0) {
-        benchDailyByDate.set(dates[i]!, (cur - prev) / prev);
+        const dayRet = (cur - prev) / prev;
+        if (Math.abs(dayRet) <= 0.15) {
+          benchDailyByDate.set(dates[i]!, dayRet);
+        }
       }
     }
   }
