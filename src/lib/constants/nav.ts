@@ -1,6 +1,7 @@
 export const NAV_ITEMS = [
   { href: "/dashboard", label: "Özet", icon: "LayoutDashboard" as const },
   { href: "/portfolio", label: "Portföy", icon: "Briefcase" as const },
+  { href: "/goals", label: "Hedefler", icon: "Target" as const },
   { href: "/transactions", label: "İşlemler", icon: "ArrowLeftRight" as const },
   { href: "/recommendations", label: "Öneriler", icon: "Lightbulb" as const },
   { href: "/funds", label: "Fonlar", icon: "Trophy" as const },

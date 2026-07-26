@@ -10,6 +10,7 @@ import {
   LineChart,
   Scale,
   Settings,
+  Target,
   Trophy,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +20,7 @@ export const NAV_ICONS: Record<(typeof NAV_ITEMS)[number]["icon"], LucideIcon> =
   {
     LayoutDashboard,
     Briefcase,
+    Target,
     Lightbulb,
     ArrowLeftRight,
     Trophy,
