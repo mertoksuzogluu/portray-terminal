@@ -21,7 +21,7 @@ import { GoalSummaryCard } from "@/components/goals/goal-summary-card";
 import {
   AiGoalCoach,
   AiRecommendations,
-  GoalProgressYtd,
+  GoalReturnToDate,
 } from "@/components/goals/ai-panels";
 import { GlassCard } from "@/components/goals/glass";
 import { cn } from "@/lib/utils/cn";
@@ -50,6 +50,12 @@ interface DashboardPayload {
     currentValue: number;
     snapshotDate: string | null;
     growth90dPct: number | null;
+    returnToDate: {
+      amount: number;
+      pct: number | null;
+      netContributions: number;
+      comment: string;
+    };
     projection: {
       progressPct: number;
       remaining: number;
@@ -318,10 +324,10 @@ export default function GoalsPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <GoalProgressYtd
-          planned={p.ytd.planned}
-          actual={p.ytd.actual}
-          comment={dash.coach.ytdComment || p.ytd.comment}
+        <GoalReturnToDate
+          amount={dash.returnToDate.amount}
+          pct={dash.returnToDate.pct}
+          comment={dash.returnToDate.comment}
         />
         <AiGoalCoach
           headlines={dash.coach.headlines}

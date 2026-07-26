@@ -1,6 +1,7 @@
 "use client";
 
 import { Sparkles } from "lucide-react";
+import { formatPercent } from "@/lib/format/tr";
 import { GlassCard } from "./glass";
 
 export function AiGoalCoach({
@@ -42,10 +43,7 @@ export function AiRecommendations({ items }: { items: string[] }) {
       </p>
       <ul className="mt-4 space-y-2">
         {items.map((r, i) => (
-          <li
-            key={i}
-            className="flex gap-2 text-sm text-foreground/90"
-          >
+          <li key={i} className="flex gap-2 text-sm text-foreground/90">
             <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
             {r}
           </li>
@@ -55,16 +53,17 @@ export function AiRecommendations({ items }: { items: string[] }) {
   );
 }
 
-export function GoalProgressYtd({
-  planned,
-  actual,
+/** Portföyün başlangıçtan bu yana kümülatif getirisi */
+export function GoalReturnToDate({
+  amount,
+  pct,
   comment,
 }: {
-  planned: number;
-  actual: number;
+  amount: number;
+  pct: number | null;
   comment: string;
 }) {
-  const fmt = (n: number) => {
+  const fmtMoney = (n: number) => {
     const abs = new Intl.NumberFormat("tr-TR", {
       style: "currency",
       currency: "TRY",
@@ -77,30 +76,50 @@ export function GoalProgressYtd({
 
   return (
     <GlassCard>
-      <h3 className="font-display text-lg tracking-tight">Bu yıl hedef</h3>
+      <h3 className="font-display text-lg tracking-tight">
+        Şu zamana kadarki getiri
+      </h3>
       <p className="mt-1 text-[11px] text-muted-foreground">
-        Portföy değerinin yıl başından (veya bu yılki başlangıçtan) bu yana
-        değişimi
+        Portföyün başlangıçtan bugüne kümülatif kâr/zararı
       </p>
       <div className="mt-4 grid grid-cols-2 gap-4">
         <div>
-          <p className="text-xs text-muted-foreground">Planlanan</p>
-          <p className="font-display text-xl tracking-tight text-muted-foreground">
-            {fmt(planned)}
+          <p className="text-xs text-muted-foreground">Getiri</p>
+          <p
+            className={`font-display text-xl tracking-tight ${
+              amount >= 0 ? "text-primary" : "text-negative"
+            }`}
+          >
+            {fmtMoney(amount)}
           </p>
         </div>
         <div>
-          <p className="text-xs text-muted-foreground">Gerçekleşen</p>
+          <p className="text-xs text-muted-foreground">Oran</p>
           <p
             className={`font-display text-xl tracking-tight ${
-              actual >= 0 ? "text-primary" : "text-negative"
+              (pct ?? 0) >= 0 ? "text-primary" : "text-negative"
             }`}
           >
-            {fmt(actual)}
+            {pct == null ? "—" : formatPercent(pct, 1)}
           </p>
         </div>
       </div>
       <p className="mt-3 text-sm text-accent">{comment}</p>
     </GlassCard>
+  );
+}
+
+/** @deprecated — GoalReturnToDate kullan */
+export function GoalProgressYtd(props: {
+  planned: number;
+  actual: number;
+  comment: string;
+}) {
+  return (
+    <GoalReturnToDate
+      amount={props.actual}
+      pct={null}
+      comment={props.comment}
+    />
   );
 }

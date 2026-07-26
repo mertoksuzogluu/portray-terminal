@@ -56,6 +56,9 @@ export async function loadGoalsDashboard(userId: string, goalId?: string | null)
   let investedCapital: number | null = null;
   let growth90dPct: number | null = null;
   let snapshotDate: string | null = null;
+  let returnToDateAmount = 0;
+  let returnToDatePct: number | null = null;
+  let netContributions = 0;
 
   if (portfolioId) {
     const latest = await getLatestPortfolioSnapshot(portfolioId);
@@ -63,6 +66,14 @@ export async function loadGoalsDashboard(userId: string, goalId?: string | null)
       currentValue = num(latest.totalMarketValue);
       snapshotDate = latest.snapshotDate.toISOString().slice(0, 10);
       investedCapital = num(latest.investedCapital);
+      netContributions = num(latest.netContributions);
+      // Snapshot’taki kümülatif kâr/zarar = şu zamana kadarki getiri (TL)
+      returnToDateAmount = num(latest.cumulativeProfitLoss);
+      if (latest.cumulativeReturn != null) {
+        returnToDatePct = num(latest.cumulativeReturn);
+      } else if (netContributions > 0) {
+        returnToDatePct = returnToDateAmount / netContributions;
+      }
     }
 
     const snaps = await getPortfolioSnapshots(portfolioId, 400);
@@ -149,6 +160,13 @@ export async function loadGoalsDashboard(userId: string, goalId?: string | null)
     ).catch(() => undefined);
   }
 
+  const returnComment =
+    returnToDateAmount > 0
+      ? "Şu ana kadar portföyün pozitif getiride."
+      : returnToDateAmount < 0
+        ? "Şu ana kadar portföyün negatif getiride."
+        : "Henüz ölçülebilir getiri yok.";
+
   return {
     goals: goals.map(serializeGoal),
     activeGoal: serializeGoal(active),
@@ -156,6 +174,12 @@ export async function loadGoalsDashboard(userId: string, goalId?: string | null)
       currentValue,
       snapshotDate,
       growth90dPct,
+      returnToDate: {
+        amount: returnToDateAmount,
+        pct: returnToDatePct,
+        netContributions,
+        comment: returnComment,
+      },
       projection: {
         ...projection,
         plannedDate: projection.plannedDate.toISOString().slice(0, 10),
