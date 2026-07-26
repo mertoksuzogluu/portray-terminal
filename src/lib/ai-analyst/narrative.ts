@@ -154,14 +154,25 @@ function buildTemplateRecommendations(
     });
   }
 
-  // 2) Hisse yok / çok az → riskli ürüne acele etme
+  const monthlyDep =
+    m.depositMonthlyRate != null ? pct(m.depositMonthlyRate) : null;
+  const annualDep =
+    m.depositAnnualRate != null
+      ? `%${(m.depositAnnualRate * 100).toFixed(0)}`
+      : null;
+  const liquidParkHint =
+    monthlyDep && annualDep
+      ? `Boşta / risksiz tutacağınız parayı çekmecede bırakmayın: vadeli mevduat veya likit para piyasası fonlarında değerlendirin (hemen kullanılabilir nakit gibi, ama çalışır). Ayarlarınızdaki vadeli kıyası yıllık ~${annualDep}, aylık efektif ortalama ~${monthlyDep}.`
+      : `Boşta tutacağınız parayı vadeli mevduat veya likit para piyasası fonlarında değerlendirin — nakit gibi hızlı kullanılır, getirisi vardır.`;
+
+  // 2) Hisse yok / çok az → riskli ürüne acele etme + likit getiri
   if (!comp.hasDirectEquity) {
     recs.push({
       action: "HOLD",
       assetClass: "EQUITY",
       symbol: null,
       title: "Doğrudan hisse alımını şimdilik bekletin",
-      rationale: `Portföyünüzde doğrudan hisse senedi görünmüyor${comp.mostlyFunds ? "; ağırlık fonlarda" : ""}. Piyasa ve jeopolitik haberler oynakken yeni hisse / yüksek riskli ürüne acele etmeyin. Planınız varsa bile kademeli ve küçük payla düşünün; ana paranız sakin tarafta kalsın.`,
+      rationale: `Portföyünüzde doğrudan hisse senedi görünmüyor${comp.mostlyFunds ? "; ağırlık fonlarda" : ""}. Yeni hisse / yüksek riskli ürüne acele etmeyin. Planınız varsa erteleyin veya çok küçük başlayın. ${liquidParkHint}`,
       priority: priority++,
     });
   } else if (comp.equityW < 0.1) {
@@ -170,33 +181,36 @@ function buildTemplateRecommendations(
       assetClass: "EQUITY",
       symbol: null,
       title: "Hisse payınız düşük — büyütmeyi aceleye getirmeyin",
-      rationale: `Hisse / riskli taraf yaklaşık ${pct(comp.equityW)}. Artırmak isterseniz tek seferde değil, küçük adımlarla ve gerekçeniz netken ilerleyin.`,
+      rationale: `Hisse / riskli taraf yaklaşık ${pct(comp.equityW)}. Artırmak isterseniz küçük adımlarla gidin. Bekleyen paranız varsa ${liquidParkHint}`,
       priority: priority++,
     });
   }
 
-  // 3) Yoğunlaşma uyarısı (HOLD ile çelişmesin: azalt deme, yeni para yönlendir)
+  // 3) Yoğunlaşma: yeni para → likit getiri (nakit değil)
   if (top && top.weight >= 0.5) {
     recs.push({
       action: "SHIFT_CLASS",
       assetClass: "FUND",
       symbol: top.symbol,
-      title: `Yeni birikimi ${top.symbol} dışına yönlendirin`,
-      rationale: `${top.symbol} zaten çok ağır (~${pct(top.weight)}). Mevcutı satmak zorunda değilsiniz; bundan sonraki yatırımları başka fon / nakit / koruma tarafına bölmek tek ürün riskini yumuşatır.`,
+      title: `Yeni birikimi ${top.symbol} yerine likit getiriye kaydırın`,
+      rationale: `${top.symbol} zaten çok ağır (~${pct(top.weight)}). Mevcutı satmak zorunda değilsiniz. Bundan sonraki parayı vadeli veya para piyasası fonunda tutmak hem çeşitlendirir hem nakit kadar likit kalır${monthlyDep ? ` (aylık ~${monthlyDep} bandı)` : ""}.`,
       priority: priority++,
     });
   }
 
-  // 4) Vadeliye göre gerideyse
-  if (m.vsDepositReturn != null && m.vsDepositReturn < -0.005) {
-    recs.push({
-      action: "PARK_CASH",
-      assetClass: "CASH",
-      title: "Bir kısmı daha öngörülebilir tutun",
-      rationale: `Bu kıyas penceresinde vadeli yaklaşık ${money(m.depositOpportunityPnl)} getirecekti; portföy farkı ${money(m.vsDepositPnl)}. Acil para ve fırsat için kısa vadeli / para piyasası payına bakılabilir — hepsini bozmak şart değil.`,
-      priority: priority++,
-    });
-  }
+  // 4) Her raporda bir likit park maddesi (veya vadeliye göre gerideyse güçlendir)
+  const parkPriority = priority++;
+  recs.push({
+    action: "PARK_CASH",
+    assetClass: "FUND",
+    symbol: null,
+    title: "Bekleyen parayı mevduat / para piyasasında çalıştırın",
+    rationale:
+      m.vsDepositReturn != null && m.vsDepositReturn < -0.005
+        ? `Bu pencerede vadeli ~${money(m.depositOpportunityPnl)} getirecekti; portföy farkı ${money(m.vsDepositPnl)}. ${liquidParkHint} “Nakit tutayım” yerine bu seçenekler nakit sayılır: hızlı çıkar, boşta yatmaz.`
+        : `${liquidParkHint} “Nakit tutayım” demek faizsiz bırakmak demek; mevduat ve para piyasası fonu da nakit gibi likittir.`,
+    priority: parkPriority,
+  });
 
   // 5) Koruma sınıfı yoksa nazik hatırlatma
   if ((comp.goldW ?? 0) + (comp.fxW ?? 0) < 0.02 && comp.fundW > 0.7) {
@@ -328,6 +342,8 @@ function metricsForPrompt(m: MonthlyAiMetrics) {
     enflasyonMaliyetiTl: m.inflationOpportunityPnl,
     enflasyonaGoreFarkTl: m.vsInflationPnl,
     enflasyonaGoreFarkYuzde: m.vsInflationReturn,
+    vadeliYillikOran: m.depositAnnualRate,
+    vadeliAylikEfektifOran: m.depositMonthlyRate,
     vadeliKiyasOrani: m.depositHurdle,
     vadeliIleKazanilacakTl: m.depositOpportunityPnl,
     vadeliyeGoreFarkTl: m.vsDepositPnl,
@@ -414,6 +430,7 @@ Kurallar:
 - positionRecommendations: SAÇMA / BOŞ “koruyun” deme. Her maddede NEDEN yaz (kâr oranı, düzenli getiri, yoğunlaşma, portföyde ne var/yok).
 - Portföyde doğrudan hisse yoksa: riskli hisse alımını beklet / plan varsa ertele diyebilirsin.
 - Ana ürün zaten ağırsa: “koruyun çünkü X kârdasınız / düzenli duruyor” de; gerekirse “yeni parayı başka yere” de — sadece “koruyun” yetmez.
+- “Nakit tutun / nakitte bekletin” DEME. Bunun yerine: vadeli mevduat veya likit para piyasası fonu — bunlar da nakit gibi hemen kullanılabilir, ama getirisi var. Aylık efektif oranı (vadeliAylikEfektifOran) ve yıllık oranı sayıyla yaz.
 - Sadece geçerli JSON döndür.`,
   };
 
@@ -463,8 +480,9 @@ topHoldingSpotlight: zorunlu (ürün varsa); brifinge sadık kal, uydurma alınt
 positionRecommendations — 4-5 madde, örnek tarzı (kendi sayılarınla yaz):
 1) Ana ürün (örn. PBR): "Şimdilik tutun çünkü toplamda ~%13 kârdasınız; düzenli getiri gibi duruyor. Yeni büyük parayı aynı ürüne yığmayın."
 2) Hisse yoksa: "Doğrudan hisse / yüksek riskli ürün alımını bekletin; planınız varsa erteleyin veya çok küçük başlayın."
-3) Yoğunlaşma: "Mevcutı bozmak zorunda değilsiniz; yeni birikimi başka yere bölün."
-4) Vadeli/enflasyon veya dünya olayına bağlı 1 pratik madde.
+3) Yoğunlaşma: "Mevcutı bozmak zorunda değilsiniz; yeni birikimi vadeli veya para piyasası fonuna kaydırın."
+4) Likit park (ZORUNLU): "Bekleyen parayı çekmecede / faizsiz nakitte bırakmayın. Vadeli veya likit para piyasası fonu nakit gibi kullanılır; aylık efektif ~X%, yıllık ~Y% (verilen vadeliAylikEfektifOran / vadeliYillikOran)."
+“Nakit tutun” yazmak yasak — mevduat / para piyasası de, likit olduğunu söyle.
 Her rationale içinde sayı veya somut gerekçe olsun.
 
 Sayıları uydurma; verilenlere uy.`,

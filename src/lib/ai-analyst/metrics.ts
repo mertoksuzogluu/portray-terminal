@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { d } from "@/lib/calculations/decimal";
+import { annualToMonthlyRate } from "@/lib/calculations/monthly-hurdle";
 import {
   computeRiskMetrics,
   concentrationAnalysis,
@@ -266,6 +267,7 @@ export async function buildMonthlyAiMetrics(
       ? prorateMonthlyRate(inflationMonthlyRaw, heldDays, daysInMonth)
       : inflationMonthlyRaw;
 
+  const depositMonthlyRate = annualToMonthlyRate(rf).toNumber();
   const depositHurdle =
     heldDays != null ? holdingPeriodRate(rf, heldDays) : null;
 
@@ -388,6 +390,8 @@ export async function buildMonthlyAiMetrics(
     inflationOpportunityPnl,
     vsInflationPnl,
     vsInflationReturn,
+    depositAnnualRate: rf,
+    depositMonthlyRate,
     depositHurdle,
     depositLabel:
       heldDays != null

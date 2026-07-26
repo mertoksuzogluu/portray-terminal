@@ -50,6 +50,10 @@ export interface MonthlyAiMetrics {
   /** Portföy kârı − enflasyon maliyeti */
   vsInflationPnl: number | null;
   vsInflationReturn: number | null;
+  /** Ayarlardaki yıllık vadeli oranı (örn. 0.45) */
+  depositAnnualRate: number | null;
+  /** Aylık efektif vadeli / para piyasası kıyas oranı */
+  depositMonthlyRate: number | null;
   depositHurdle: number | null;
   depositLabel: string;
   /** Vadeli ile aynı sürede kazanılacak tutar (TL) */

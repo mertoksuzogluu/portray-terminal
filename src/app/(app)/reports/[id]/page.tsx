@@ -60,7 +60,7 @@ function actionTr(action: string): string {
     case "SHIFT_CLASS":
       return "Kaydırın";
     case "PARK_CASH":
-      return "Nakit tutun";
+      return "Mevduat / para piyasası";
     default:
       return action;
   }
