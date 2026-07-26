@@ -7,9 +7,15 @@ import { GlassCard } from "./glass";
 export function AiGoalCoach({
   headlines,
   source,
+  loading,
+  error,
+  onRefresh,
 }: {
   headlines: string[];
   source: string;
+  loading?: boolean;
+  error?: string | null;
+  onRefresh?: () => void;
 }) {
   return (
     <GlassCard className="border-accent/20">
@@ -17,7 +23,11 @@ export function AiGoalCoach({
         <Sparkles className="h-4 w-4 text-accent" />
         <h3 className="font-display text-lg tracking-tight">AI Goal Coach</h3>
         <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">
-          {source === "openai" ? "Canlı" : "Şablon"}
+          {loading
+            ? "Üretiliyor…"
+            : source === "openai"
+              ? "Canlı"
+              : "Şablon"}
         </span>
       </div>
       <ul className="mt-4 space-y-2">
@@ -30,6 +40,19 @@ export function AiGoalCoach({
           </li>
         ))}
       </ul>
+      {error ? (
+        <p className="mt-3 text-xs text-negative">{error}</p>
+      ) : null}
+      {onRefresh ? (
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading}
+          className="mt-3 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+        >
+          {loading ? "AI yorumu hazırlanıyor…" : "AI yorumunu yenile"}
+        </button>
+      ) : null}
     </GlassCard>
   );
 }

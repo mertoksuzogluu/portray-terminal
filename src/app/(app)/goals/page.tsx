@@ -108,6 +108,50 @@ export default function GoalsPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [coachLoading, setCoachLoading] = useState(false);
+  const [coachError, setCoachError] = useState<string | null>(null);
+
+  const refreshCoach = useCallback(
+    async (goalId: string, force = false) => {
+      setCoachLoading(true);
+      setCoachError(null);
+      try {
+        const res = await clientFetch<{
+          coach: {
+            headlines: string[];
+            recommendations: string[];
+            ytdComment: string;
+            source: string;
+            aiError?: string;
+          };
+        }>("/api/goals/coach", {
+          method: "POST",
+          body: JSON.stringify({ goalId, force }),
+        });
+        setData((prev) => {
+          if (!prev?.dashboard) return prev;
+          return {
+            ...prev,
+            dashboard: {
+              ...prev.dashboard,
+              coach: res.coach,
+            },
+          };
+        });
+        if (res.coach.source !== "openai") {
+          setCoachError(
+            res.coach.aiError ??
+              "AI yanıtı alınamadı; şablon gösteriliyor."
+          );
+        }
+      } catch (e) {
+        setCoachError(e instanceof Error ? e.message : "AI koç yüklenemedi");
+      } finally {
+        setCoachLoading(false);
+      }
+    },
+    []
+  );
 
   const load = useCallback(async (goalId?: string | null) => {
     setLoading(true);
@@ -132,6 +176,21 @@ export default function GoalsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Dashboard şablon dönebilir; canlı AI’yi ayrıca çek.
+  useEffect(() => {
+    const goalId = data?.activeGoal?.id;
+    const source = data?.dashboard?.coach?.source;
+    if (!goalId || loading || showWizard) return;
+    if (source === "openai") return;
+    void refreshCoach(goalId, true);
+  }, [
+    data?.activeGoal?.id,
+    data?.dashboard?.coach?.source,
+    loading,
+    showWizard,
+    refreshCoach,
+  ]);
 
   async function handleCreated(goalId: string) {
     setShowWizard(false);
@@ -332,6 +391,9 @@ export default function GoalsPage() {
         <AiGoalCoach
           headlines={dash.coach.headlines}
           source={dash.coach.source}
+          loading={coachLoading}
+          error={coachError}
+          onRefresh={() => void refreshCoach(active.id, true)}
         />
       </div>
 

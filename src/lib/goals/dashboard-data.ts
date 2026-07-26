@@ -11,7 +11,6 @@ import { syncAchievements } from "./achievements";
 import {
   buildTemplateCoach,
   getCachedCoach,
-  getOrCreateCoach,
   type CoachPayload,
 } from "./coach";
 import type { ContributionGrowth, GoalTargetKind, GoalType } from "./types";
@@ -147,18 +146,11 @@ export async function loadGoalsDashboard(userId: string, goalId?: string | null)
     freedomReached,
   });
 
-  // Dashboard hızlı kalsın: cache/template dön; OpenAI arka planda.
+  // Hızlı yanıt: OpenAI cache varsa onu kullan, yoksa şablon.
+  // Canlı üretim istemci tarafında POST /api/goals/coach ile yapılır.
   const cached = await getCachedCoach(active.id);
   const coach: CoachPayload =
     cached ?? buildTemplateCoach(projection, growth90dPct);
-  if (!cached) {
-    void getOrCreateCoach(
-      active.id,
-      active.title,
-      projection,
-      growth90dPct
-    ).catch(() => undefined);
-  }
 
   const returnComment =
     returnToDateAmount > 0

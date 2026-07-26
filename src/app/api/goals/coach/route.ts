@@ -44,10 +44,19 @@ export async function POST(req: NextRequest) {
 
     let currentValue = 0;
     let growth90dPct: number | null = null;
+    let returnToDate: { amount: number; pct: number | null } | null = null;
     const portfolioId = await getDefaultPortfolioId(user.id);
     if (portfolioId) {
       const snap = await getLatestPortfolioSnapshot(portfolioId);
-      if (snap) currentValue = Number(snap.totalMarketValue.toString());
+      if (snap) {
+        currentValue = Number(snap.totalMarketValue.toString());
+        const amount = Number(snap.cumulativeProfitLoss.toString());
+        const pct =
+          snap.cumulativeReturn != null
+            ? Number(snap.cumulativeReturn.toString())
+            : null;
+        returnToDate = { amount, pct };
+      }
       const snaps = await getPortfolioSnapshots(portfolioId, 120);
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 90);
@@ -75,7 +84,8 @@ export async function POST(req: NextRequest) {
       goal.title,
       projection,
       growth90dPct,
-      body.force
+      Boolean(body.force),
+      returnToDate
     );
 
     return jsonOk({ coach });
