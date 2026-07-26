@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils/cn";
 const TYPES = Object.keys(GOAL_TYPE_LABELS) as GoalType[];
 const GROWTH = Object.keys(CONTRIBUTION_GROWTH_LABELS) as ContributionGrowth[];
 const RETURNS = [0.15, 0.2, 0.25];
+const YEAR_OPTIONS = [1, 2, 3, 4, 5, 6] as const;
 
 function addYears(years: number): string {
   const d = new Date();
@@ -41,8 +42,8 @@ export function GoalWizard({
   const [customTitle, setCustomTitle] = useState("");
   const [targetKind, setTargetKind] = useState<GoalTargetKind>("LUMP_SUM");
   const [targetAmount, setTargetAmount] = useState(25_000_000);
-  const [dateMode, setDateMode] = useState<"5" | "10" | "custom">("10");
-  const [customDate, setCustomDate] = useState(addYears(10));
+  const [yearsAhead, setYearsAhead] = useState<number | "custom">(5);
+  const [customDate, setCustomDate] = useState(addYears(5));
   const [monthly, setMonthly] = useState(100_000);
   const [growth, setGrowth] = useState<ContributionGrowth>("FIXED");
   const [ret, setRet] = useState(0.2);
@@ -51,10 +52,9 @@ export function GoalWizard({
   const [passive, setPassive] = useState(200_000);
 
   const targetDate = useMemo(() => {
-    if (dateMode === "5") return addYears(5);
-    if (dateMode === "10") return addYears(10);
-    return customDate;
-  }, [dateMode, customDate]);
+    if (yearsAhead === "custom") return customDate;
+    return addYears(yearsAhead);
+  }, [yearsAhead, customDate]);
 
   const expectedReturn = customRet ? Number(customRet.replace(",", ".")) / 100 : ret;
 
@@ -243,31 +243,43 @@ export function GoalWizard({
 
         {step === 2 && (
           <div className="space-y-3">
-            {(
-              [
-                ["5", "5 yıl"],
-                ["10", "10 yıl"],
-                ["custom", "Özel tarih"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setDateMode(id)}
-                className={cn(
-                  "w-full rounded-lg border px-4 py-3 text-left text-sm",
-                  dateMode === id
-                    ? "border-primary/60 bg-primary/10"
-                    : "border-white/10"
-                )}
-              >
-                {label}
-              </button>
-            ))}
-            {dateMode === "custom" && (
+            <p className="text-sm text-muted-foreground">
+              Ulaşmak istediğin süre
+            </p>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {YEAR_OPTIONS.map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => setYearsAhead(y)}
+                  className={cn(
+                    "rounded-lg border px-2 py-3 text-center text-sm font-medium transition-colors",
+                    yearsAhead === y
+                      ? "border-primary/60 bg-primary/10 text-foreground"
+                      : "border-white/10 text-muted-foreground hover:border-white/20"
+                  )}
+                >
+                  {y} yıl
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setYearsAhead("custom")}
+              className={cn(
+                "w-full rounded-lg border px-4 py-3 text-left text-sm",
+                yearsAhead === "custom"
+                  ? "border-primary/60 bg-primary/10"
+                  : "border-white/10"
+              )}
+            >
+              Özel tarih
+            </button>
+            {yearsAhead === "custom" && (
               <Input
                 type="date"
                 value={customDate}
+                min={addYears(0)}
                 onChange={(e) => setCustomDate(e.target.value)}
               />
             )}
