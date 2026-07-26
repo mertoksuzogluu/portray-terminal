@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { clientFetch } from "@/lib/api/client-fetch";
 import { formatMoney, formatPercentPlain } from "@/lib/format/tr";
 import { GlassCard } from "./glass";
+import { MoneyInput } from "./money-input";
 
 export function FinancialFreedomPanel({
   goalId,
@@ -26,11 +26,14 @@ export function FinancialFreedomPanel({
   targetPassiveIncome: number | null;
   onSaved: () => void;
 }) {
-  const [living, setLiving] = useState(String(monthlyLivingCost ?? 120000));
-  const [passive, setPassive] = useState(
-    String(targetPassiveIncome ?? 200000)
-  );
+  const [living, setLiving] = useState(monthlyLivingCost ?? 120_000);
+  const [passive, setPassive] = useState(targetPassiveIncome ?? 200_000);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setLiving(monthlyLivingCost ?? 120_000);
+    setPassive(targetPassiveIncome ?? 200_000);
+  }, [goalId, monthlyLivingCost, targetPassiveIncome]);
 
   async function save() {
     setSaving(true);
@@ -39,8 +42,8 @@ export function FinancialFreedomPanel({
         method: "PATCH",
         body: JSON.stringify({
           freedomPrefs: {
-            monthlyLivingCost: Number(living) || 0,
-            targetPassiveIncome: Number(passive) || 0,
+            monthlyLivingCost: living || 0,
+            targetPassiveIncome: passive || 0,
           },
         }),
       });
@@ -89,19 +92,15 @@ export function FinancialFreedomPanel({
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div>
           <Label>Aylık yaşam giderim</Label>
-          <Input
-            className="mt-1"
-            value={living}
-            onChange={(e) => setLiving(e.target.value)}
-          />
+          <div className="mt-1">
+            <MoneyInput value={living} onChange={setLiving} />
+          </div>
         </div>
         <div>
           <Label>Hedef pasif gelir</Label>
-          <Input
-            className="mt-1"
-            value={passive}
-            onChange={(e) => setPassive(e.target.value)}
-          />
+          <div className="mt-1">
+            <MoneyInput value={passive} onChange={setPassive} />
+          </div>
         </div>
       </div>
       <Button

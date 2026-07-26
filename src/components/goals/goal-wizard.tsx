@@ -14,7 +14,9 @@ import {
   type GoalTargetKind,
   type GoalType,
 } from "@/lib/goals/types";
+import { formatDateTR } from "@/lib/format/tr";
 import { GlassCard } from "./glass";
+import { MoneyInput } from "./money-input";
 import { cn } from "@/lib/utils/cn";
 
 const TYPES = Object.keys(GOAL_TYPE_LABELS) as GoalType[];
@@ -27,22 +29,26 @@ function addYears(years: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function GoalWizard({ onCreated }: { onCreated: () => void }) {
+export function GoalWizard({
+  onCreated,
+}: {
+  onCreated: (goalId: string) => void | Promise<void>;
+}) {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
 
   const [type, setType] = useState<GoalType>("PORTFOLIO_SIZE");
   const [customTitle, setCustomTitle] = useState("");
   const [targetKind, setTargetKind] = useState<GoalTargetKind>("LUMP_SUM");
-  const [targetAmount, setTargetAmount] = useState("25000000");
+  const [targetAmount, setTargetAmount] = useState(25_000_000);
   const [dateMode, setDateMode] = useState<"5" | "10" | "custom">("10");
   const [customDate, setCustomDate] = useState(addYears(10));
-  const [monthly, setMonthly] = useState("100000");
+  const [monthly, setMonthly] = useState(100_000);
   const [growth, setGrowth] = useState<ContributionGrowth>("FIXED");
   const [ret, setRet] = useState(0.2);
   const [customRet, setCustomRet] = useState("");
-  const [living, setLiving] = useState("120000");
-  const [passive, setPassive] = useState("200000");
+  const [living, setLiving] = useState(120_000);
+  const [passive, setPassive] = useState(200_000);
 
   const targetDate = useMemo(() => {
     if (dateMode === "5") return addYears(5);
@@ -50,21 +56,19 @@ export function GoalWizard({ onCreated }: { onCreated: () => void }) {
     return customDate;
   }, [dateMode, customDate]);
 
-  const expectedReturn = customRet ? Number(customRet) / 100 : ret;
+  const expectedReturn = customRet ? Number(customRet.replace(",", ".")) / 100 : ret;
 
   async function submit() {
     setSaving(true);
     try {
-      const amount = Number(targetAmount.replace(/\./g, "").replace(",", "."));
-      const contrib = Number(monthly.replace(/\./g, "").replace(",", "."));
-      if (!Number.isFinite(amount) || amount <= 0) {
+      if (!Number.isFinite(targetAmount) || targetAmount <= 0) {
         throw new Error("Geçerli bir hedef tutarı girin.");
       }
-      if (!Number.isFinite(contrib) || contrib < 0) {
+      if (!Number.isFinite(monthly) || monthly < 0) {
         throw new Error("Geçerli bir aylık kapasite girin.");
       }
-      if (!Number.isFinite(expectedReturn) || expectedReturn < 0) {
-        throw new Error("Geçerli bir getiri girin.");
+      if (!Number.isFinite(expectedReturn) || expectedReturn < 0 || expectedReturn > 1) {
+        throw new Error("Geçerli bir getiri girin (örn. 18).");
       }
 
       const kind: GoalTargetKind =
@@ -72,7 +76,7 @@ export function GoalWizard({ onCreated }: { onCreated: () => void }) {
           ? "MONTHLY_PASSIVE"
           : "LUMP_SUM";
 
-      await clientFetch("/api/goals", {
+      const res = await clientFetch<{ goal: { id: string } }>("/api/goals", {
         method: "POST",
         body: JSON.stringify({
           type,
@@ -80,23 +84,23 @@ export function GoalWizard({ onCreated }: { onCreated: () => void }) {
             type === "CUSTOM" && customTitle.trim()
               ? customTitle.trim()
               : undefined,
-          targetAmount: amount,
+          targetAmount,
           targetKind: kind,
           targetDate,
-          monthlyContribution: contrib,
+          monthlyContribution: monthly,
           contributionGrowth: growth,
           expectedReturnAnnual: expectedReturn,
           freedomPrefs:
             type === "FINANCIAL_FREEDOM" || type === "PASSIVE_INCOME"
               ? {
-                  monthlyLivingCost: Number(living) || 0,
-                  targetPassiveIncome: Number(passive) || amount,
+                  monthlyLivingCost: living || 0,
+                  targetPassiveIncome: passive || targetAmount,
                 }
               : undefined,
         }),
       });
       toast.success("Hedef oluşturuldu");
-      onCreated();
+      await onCreated(res.goal.id);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Kayıt başarısız");
     } finally {
@@ -203,33 +207,34 @@ export function GoalWizard({ onCreated }: { onCreated: () => void }) {
             <div>
               <Label>
                 {targetKind === "MONTHLY_PASSIVE"
-                  ? "Hedef aylık pasif gelir (TL)"
-                  : "Hedef tutarı (TL)"}
+                  ? "Hedef aylık pasif gelir"
+                  : "Hedef tutarı"}
               </Label>
-              <Input
-                className="mt-1 font-display text-lg"
-                value={targetAmount}
-                onChange={(e) => setTargetAmount(e.target.value)}
-                inputMode="decimal"
-              />
+              <div className="mt-1">
+                <MoneyInput
+                  value={targetAmount}
+                  onChange={setTargetAmount}
+                  placeholder={
+                    targetKind === "MONTHLY_PASSIVE"
+                      ? "Örn. 200.000"
+                      : "Örn. 25.000.000"
+                  }
+                />
+              </div>
             </div>
             {(type === "FINANCIAL_FREEDOM" || type === "PASSIVE_INCOME") && (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label>Aylık yaşam giderim</Label>
-                  <Input
-                    className="mt-1"
-                    value={living}
-                    onChange={(e) => setLiving(e.target.value)}
-                  />
+                  <div className="mt-1">
+                    <MoneyInput value={living} onChange={setLiving} />
+                  </div>
                 </div>
                 <div>
                   <Label>Hedef pasif gelir</Label>
-                  <Input
-                    className="mt-1"
-                    value={passive}
-                    onChange={(e) => setPassive(e.target.value)}
-                  />
+                  <div className="mt-1">
+                    <MoneyInput value={passive} onChange={setPassive} />
+                  </div>
                 </div>
               </div>
             )}
@@ -267,7 +272,7 @@ export function GoalWizard({ onCreated }: { onCreated: () => void }) {
               />
             )}
             <p className="text-xs text-muted-foreground">
-              Planlanan tarih: {targetDate}
+              Planlanan tarih: {formatDateTR(targetDate)}
             </p>
           </div>
         )}
@@ -278,11 +283,10 @@ export function GoalWizard({ onCreated }: { onCreated: () => void }) {
               Ortalama olarak her ay ne kadar yatırım yapabileceğini
               düşünüyorsun?
             </Label>
-            <Input
-              className="font-display text-lg"
+            <MoneyInput
               value={monthly}
-              onChange={(e) => setMonthly(e.target.value)}
-              inputMode="decimal"
+              onChange={setMonthly}
+              placeholder="Örn. 100.000"
             />
             <p className="rounded-md border border-accent/20 bg-accent/5 px-3 py-2 text-xs text-muted-foreground">
               Bu bilgi yalnızca hedef projeksiyonlarını hesaplamak için
@@ -324,9 +328,7 @@ export function GoalWizard({ onCreated }: { onCreated: () => void }) {
                 <Button
                   key={r}
                   type="button"
-                  variant={
-                    !customRet && ret === r ? "default" : "outline"
-                  }
+                  variant={!customRet && ret === r ? "default" : "outline"}
                   onClick={() => {
                     setRet(r);
                     setCustomRet("");

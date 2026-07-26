@@ -7,7 +7,12 @@ import { getDefaultPortfolioId } from "@/lib/auth/session";
 import { projectGoal } from "./projection";
 import { serializeGoal } from "./serialize";
 import { syncAchievements } from "./achievements";
-import { getOrCreateCoach } from "./coach";
+import {
+  buildTemplateCoach,
+  getCachedCoach,
+  getOrCreateCoach,
+  type CoachPayload,
+} from "./coach";
 import type { ContributionGrowth, GoalTargetKind, GoalType } from "./types";
 
 function num(v: { toString(): string } | number): number {
@@ -105,12 +110,18 @@ export async function loadGoalsDashboard(userId: string, goalId?: string | null)
     freedomReached,
   });
 
-  const coach = await getOrCreateCoach(
-    active.id,
-    active.title,
-    projection,
-    growth90dPct
-  );
+  // Dashboard hızlı kalsın: cache/template dön; OpenAI arka planda.
+  const cached = await getCachedCoach(active.id);
+  const coach: CoachPayload =
+    cached ?? buildTemplateCoach(projection, growth90dPct);
+  if (!cached) {
+    void getOrCreateCoach(
+      active.id,
+      active.title,
+      projection,
+      growth90dPct
+    ).catch(() => undefined);
+  }
 
   return {
     goals: goals.map(serializeGoal),

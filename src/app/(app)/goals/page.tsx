@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Target } from "lucide-react";
 import { clientFetch } from "@/lib/api/client-fetch";
 import { formatDateTR, formatMoney } from "@/lib/format/tr";
@@ -100,6 +101,7 @@ export default function GoalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async (goalId?: string | null) => {
     setLoading(true);
@@ -112,8 +114,10 @@ export default function GoalsPage() {
       setData(res);
       setActiveId(res.activeGoal?.id ?? null);
       setShowWizard(false);
+      return res;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Yüklenemedi");
+      return null;
     } finally {
       setLoading(false);
     }
@@ -123,6 +127,30 @@ export default function GoalsPage() {
     void load();
   }, [load]);
 
+  async function handleCreated(goalId: string) {
+    setShowWizard(false);
+    await load(goalId);
+  }
+
+  async function handleDelete() {
+    if (!activeId) return;
+    const ok = window.confirm(
+      "Bu hedefi silmek istediğine emin misin? Bu işlem geri alınamaz."
+    );
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await clientFetch(`/api/goals/${activeId}`, { method: "DELETE" });
+      toast.success("Hedef silindi");
+      await load(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Silinemedi");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  // İlk yükleme
   if (loading && !data) {
     return (
       <div className="space-y-4">
@@ -132,38 +160,15 @@ export default function GoalsPage() {
   }
 
   if (error && !data) {
-    return (
-      <ErrorState message={error} onRetry={() => load(activeId)} />
-    );
+    return <ErrorState message={error} onRetry={() => load(activeId)} />;
   }
 
-  const goals = data?.goals ?? [];
-  const dash = data?.dashboard;
-  const active = data?.activeGoal;
-
-  if (showWizard || goals.length === 0) {
-    if (goals.length === 0 && !showWizard) {
-      return (
-        <div className="space-y-6">
-          <EmptyState
-            icon={Target}
-            title="Henüz hedef yok"
-            description="Finansal hedefini tanımla; portföyünden bağımsız olarak ilerlemeyi ve projeksiyonları takip et."
-            actionLabel="Hedef oluştur"
-            onAction={() => setShowWizard(true)}
-          />
-        </div>
-      );
-    }
+  // Wizard açıkken — yükleme sırasında da wizard kapanıp skeleton göster
+  if (showWizard) {
     return (
       <div className="goals-surface -mx-4 min-h-[70vh] px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <GoalWizard
-          onCreated={() => {
-            setShowWizard(false);
-            void load();
-          }}
-        />
-        {goals.length > 0 ? (
+        <GoalWizard onCreated={handleCreated} />
+        {(data?.goals.length ?? 0) > 0 ? (
           <div className="mx-auto mt-4 max-w-2xl text-center">
             <Button
               type="button"
@@ -174,6 +179,36 @@ export default function GoalsPage() {
             </Button>
           </div>
         ) : null}
+      </div>
+    );
+  }
+
+  // Oluşturma sonrası yenileme — eski boş state’e düşme
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <LoadingSkeleton />
+        <p className="text-center text-sm text-muted-foreground">
+          Hedef panosu yükleniyor…
+        </p>
+      </div>
+    );
+  }
+
+  const goals = data?.goals ?? [];
+  const dash = data?.dashboard;
+  const active = data?.activeGoal;
+
+  if (goals.length === 0) {
+    return (
+      <div className="space-y-6">
+        <EmptyState
+          icon={Target}
+          title="Henüz hedef yok"
+          description="Finansal hedefini tanımla; portföyünden bağımsız olarak ilerlemeyi ve projeksiyonları takip et."
+          actionLabel="Hedef oluştur"
+          onAction={() => setShowWizard(true)}
+        />
       </div>
     );
   }
@@ -209,6 +244,8 @@ export default function GoalsPage() {
             void load(id);
           }}
           onNew={() => setShowWizard(true)}
+          onDelete={handleDelete}
+          deleting={deleting}
         />
       </div>
 

@@ -10,7 +10,7 @@ export interface CoachPayload {
   aiError?: string;
 }
 
-function isoWeekKey(d = new Date()): string {
+export function isoWeekKey(d = new Date()): string {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const dayNum = date.getUTCDay() || 7;
   date.setUTCDate(date.getUTCDate() + 4 - dayNum);
@@ -19,6 +19,17 @@ function isoWeekKey(d = new Date()): string {
     ((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
   );
   return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+export async function getCachedCoach(
+  goalId: string
+): Promise<CoachPayload | null> {
+  const weekKey = isoWeekKey();
+  const cached = await prisma.goalCoachCache.findUnique({
+    where: { goalId_weekKey: { goalId, weekKey } },
+  });
+  if (!cached?.payload) return null;
+  return cached.payload as unknown as CoachPayload;
 }
 
 function sanitizeApiKey(value: string | undefined): string | null {
